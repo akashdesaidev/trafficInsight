@@ -1,0 +1,36 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: traffic_insight_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: traffic_insight
+      POSTGRES_USER: traffic
+      POSTGRES_PASSWORD: traffic
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U traffic -d traffic_insight"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: traffic_insight_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--save", "60 1", "--loglevel", "warning"]
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:
+
+
