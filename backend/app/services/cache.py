@@ -77,3 +77,22 @@ def get_cache() -> Cache:
     return _cache_instance
 
 
+class CacheService:
+    """
+    Service wrapper for cache operations with async support
+    """
+    
+    def __init__(self):
+        self.cache = get_cache()
+    
+    async def get(self, key: str) -> Optional[Any]:
+        """Get value from cache (async wrapper)"""
+        return self.cache.get(key)
+    
+    async def set(self, key: str, value: Any, expire: int) -> None:
+        """Set value in cache with expiration (async wrapper)"""
+        self.cache.set(key, value, expire)
+
+
+
+

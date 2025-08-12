@@ -2,10 +2,12 @@ fastapi
 uvicorn[standard]
 sqlalchemy
 psycopg2-binary
+geoalchemy2
 redis
 celery
 alembic
 python-dotenv
 httpx
 pydantic-settings
+Pillow
 
