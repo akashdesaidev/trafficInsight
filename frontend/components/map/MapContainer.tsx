@@ -10,6 +10,7 @@ import IncidentMarkers from "@/components/map/IncidentMarkers";
 import IncidentPopup from "@/components/map/IncidentPopup";
 import RouteDrawer from "@/components/map/RouteDrawer";
 import LocationSearch from "@/components/search/LocationSearch";
+import { RouteDirections } from "@/components/route/RouteDirections";
 import "@tomtom-international/web-sdk-maps/dist/maps.css";
 
 type TomTomModule = {
@@ -43,6 +44,7 @@ export default function MapContainer({ onAreaSelect }: MapContainerProps) {
   const incidentLayer = useMapStore((s) => s.incidentLayer);
   const mapSettings = useMapStore((s) => s.mapSettings);
   const sidebarCollapsed = useMapStore((s) => s.sidebarCollapsed);
+  const selectedLocation = useMapStore((s) => s.selectedLocation);
   const setTrafficVisible = useMapStore((s) => s.setTrafficVisible);
   const setIncidentsVisible = useMapStore((s) => s.setIncidentsVisible);
   const [routeDrawingEnabled, setRouteDrawingEnabled] = useState(false);
@@ -50,25 +52,34 @@ export default function MapContainer({ onAreaSelect }: MapContainerProps) {
   const [userLocation, setUserLocation] = useState<[number, number] | null>(
     null
   );
+  const [routeDestination, setRouteDestination] = useState<{
+    lat: number;
+    lon: number;
+    name: string;
+  } | null>(null);
 
   const setCenter = useMapStore((s) => s.setCenter);
   const setZoom = useMapStore((s) => s.setZoom);
 
-  const addLocationMarker = (coordinates: [number, number]) => {
+  const addLocationMarker = (coordinates: [number, number], type: 'user' | 'search' = 'user') => {
     if (!map) return;
 
     try {
-      // Remove existing location marker if present
-      if (map.getSource && map.getSource("user-location")) {
+      const sourceId = type === 'user' ? 'user-location' : 'search-location';
+      const accuracyLayerId = type === 'user' ? 'user-location-accuracy-layer' : 'search-location-accuracy-layer';
+      const dotLayerId = type === 'user' ? 'user-location-layer' : 'search-location-layer';
+      
+      // Remove existing marker if present
+      if (map.getSource && map.getSource(sourceId)) {
         try {
-          map.removeLayer("user-location-layer");
-          map.removeLayer("user-location-accuracy-layer");
+          map.removeLayer(dotLayerId);
+          map.removeLayer(accuracyLayerId);
         } catch {}
-        map.removeSource("user-location");
+        map.removeSource(sourceId);
       }
 
-      // Add user location source
-      map.addSource("user-location", {
+      // Add location source
+      map.addSource(sourceId, {
         type: "geojson",
         data: {
           type: "Feature",
@@ -80,35 +91,41 @@ export default function MapContainer({ onAreaSelect }: MapContainerProps) {
         },
       });
 
-      // Add accuracy circle layer (light blue circle)
+      // Different colors for different marker types
+      const colors = {
+        user: { primary: "#4285F4", secondary: "#4285F4" }, // Blue for user location
+        search: { primary: "#E53935", secondary: "#E53935" } // Red for search results
+      };
+
+      // Add accuracy circle layer
       map.addLayer({
-        id: "user-location-accuracy-layer",
+        id: accuracyLayerId,
         type: "circle",
-        source: "user-location",
+        source: sourceId,
         paint: {
-          "circle-radius": 20,
-          "circle-color": "#4285F4",
+          "circle-radius": type === 'user' ? 20 : 15,
+          "circle-color": colors[type].secondary,
           "circle-opacity": 0.2,
           "circle-stroke-width": 1,
-          "circle-stroke-color": "#4285F4",
+          "circle-stroke-color": colors[type].secondary,
           "circle-stroke-opacity": 0.4,
         },
       });
 
-      // Add location dot layer (blue dot with white border)
+      // Add location dot layer
       map.addLayer({
-        id: "user-location-layer",
+        id: dotLayerId,
         type: "circle",
-        source: "user-location",
+        source: sourceId,
         paint: {
-          "circle-radius": 8,
-          "circle-color": "#4285F4",
+          "circle-radius": type === 'user' ? 8 : 10,
+          "circle-color": colors[type].primary,
           "circle-stroke-width": 2,
           "circle-stroke-color": "#FFFFFF",
         },
       });
     } catch (error) {
-      console.error("Error adding location marker:", error);
+      console.error(`Error adding ${type} location marker:`, error);
     }
   };
 
@@ -137,7 +154,7 @@ export default function MapContainer({ onAreaSelect }: MapContainerProps) {
           setUserLocation([longitude, latitude]);
 
           // Add location marker
-          addLocationMarker([longitude, latitude]);
+          addLocationMarker([longitude, latitude], 'user');
         }
 
         setIsLocating(false);
@@ -289,6 +306,22 @@ export default function MapContainer({ onAreaSelect }: MapContainerProps) {
     }
   }, [map, sidebarCollapsed]);
 
+  // Handle selected location from search - place marker and center map
+  useEffect(() => {
+    if (map && selectedLocation) {
+      // Center map on selected location
+      if (map.setCenter && map.setZoom) {
+        map.setCenter([selectedLocation.lon, selectedLocation.lat]);
+        map.setZoom(16); // Zoom in for better view
+      }
+
+      // Add search result marker
+      addLocationMarker([selectedLocation.lon, selectedLocation.lat], 'search');
+      
+      console.log("Placed marker for search result:", selectedLocation.name);
+    }
+  }, [map, selectedLocation]);
+
   return (
     <div className="h-full w-full relative min-h-[400px]">
       {!process.env.NEXT_PUBLIC_TOMTOM_API_KEY ? (
@@ -332,8 +365,10 @@ export default function MapContainer({ onAreaSelect }: MapContainerProps) {
       />
 
       {/* Search Box */}
-      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-10">
-        <LocationSearch />
+      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-20 w-full max-w-md px-4 sm:px-6 lg:px-4">
+        <LocationSearch 
+          onRouteRequest={(destination) => setRouteDestination(destination)}
+        />
       </div>
 
       {/* Old controls panel removed - now using sidebar */}
@@ -355,6 +390,17 @@ export default function MapContainer({ onAreaSelect }: MapContainerProps) {
           <div className="w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow-sm"></div>
         )}
       </button>
+
+      {/* Route Directions Panel */}
+      {routeDestination && (
+        <div className="absolute top-16 left-2 right-2 sm:left-4 sm:right-auto sm:w-96 z-15 max-h-[calc(100vh-120px)] overflow-auto">
+          <RouteDirections
+            destination={routeDestination}
+            onClose={() => setRouteDestination(null)}
+            userLocation={userLocation ? { lat: userLocation[1], lon: userLocation[0] } : null}
+          />
+        </div>
+      )}
 
       {/* Debug Component - Remove this after testing */}
       {/* <TrafficTestComponent visible={showTraffic} /> */}

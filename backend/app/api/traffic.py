@@ -1,13 +1,63 @@
-from typing import Optional
+from typing import Optional, Tuple
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 import httpx
+import math
 
 from app.core.config import get_settings
 from app.models.traffic import IncidentsResponse, Incident, LiveTrafficResponse, TrafficFlowResponse, TrafficFlowPoint
 from app.services.cache import get_cache
 
 router = APIRouter(prefix="/traffic", tags=["traffic"])
+
+
+def calculate_bbox_area(bbox: str) -> float:
+    """Calculate the area of a bounding box in square kilometers."""
+    try:
+        min_lon, min_lat, max_lon, max_lat = map(float, bbox.split(','))
+    except (ValueError, IndexError):
+        raise HTTPException(status_code=400, detail="Invalid bbox format. Use: minLon,minLat,maxLon,maxLat")
+    
+    # Convert to radians
+    lat1, lat2 = math.radians(min_lat), math.radians(max_lat)
+    lon1, lon2 = math.radians(min_lon), math.radians(max_lon)
+    
+    # Calculate area using spherical formula
+    # Area = R² * |sin(lat2) - sin(lat1)| * |lon2 - lon1|
+    R = 6371  # Earth's radius in km
+    area = (R ** 2) * abs(math.sin(lat2) - math.sin(lat1)) * abs(lon2 - lon1)
+    return area
+
+
+def limit_bbox_area(bbox: str, max_area_km2: float = 9000) -> str:
+    """Limit bbox area to maximum allowed by TomTom API (10,000 km²)."""
+    try:
+        min_lon, min_lat, max_lon, max_lat = map(float, bbox.split(','))
+    except (ValueError, IndexError):
+        raise HTTPException(status_code=400, detail="Invalid bbox format. Use: minLon,minLat,maxLon,maxLat")
+    
+    current_area = calculate_bbox_area(bbox)
+    
+    if current_area <= max_area_km2:
+        return bbox  # No need to limit
+    
+    # Calculate the center point
+    center_lon = (min_lon + max_lon) / 2
+    center_lat = (min_lat + max_lat) / 2
+    
+    # Calculate scale factor to fit within max area
+    scale_factor = math.sqrt(max_area_km2 / current_area)
+    
+    # Apply scale factor to create smaller bbox around center
+    width = (max_lon - min_lon) * scale_factor / 2
+    height = (max_lat - min_lat) * scale_factor / 2
+    
+    new_min_lon = center_lon - width
+    new_max_lon = center_lon + width
+    new_min_lat = center_lat - height
+    new_max_lat = center_lat + height
+    
+    return f"{new_min_lon},{new_min_lat},{new_max_lon},{new_max_lat}"
 
 
 @router.get("/live-traffic", response_model=LiveTrafficResponse)
@@ -110,6 +160,15 @@ async def get_traffic_incidents(
     if not api_key:
         raise HTTPException(status_code=500, detail="TomTom API key not configured")
 
+    # Limit bbox area to TomTom API maximum (10,000 km²)
+    try:
+        limited_bbox = limit_bbox_area(bbox)
+        if limited_bbox != bbox:
+            # Log that we've limited the bbox (optional)
+            print(f"Bbox area too large, limited from {bbox} to {limited_bbox}")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Bbox validation error: {str(e)}")
+
     cache = get_cache()
     cache_key = f"incidents:{bbox}:{language}:{timeValidityFilter}"
     cached = cache.get(cache_key)
@@ -125,10 +184,11 @@ async def get_traffic_incidents(
                 "https://api.tomtom.com/traffic/services/5/incidentDetails",
                 params={
                     "key": api_key,
-                    "bbox": bbox,
+                    "bbox": limited_bbox,
                     "language": language,
                     "timeValidityFilter": timeValidityFilter,
-                    "fields": "{incidents{type,severity,geometry{type,coordinates},properties{id,description,startTime,endTime}}}",
+                    # Remove fields parameter for now to test basic functionality
+                    # "fields": "{incidents{type,severity,geometry{type,coordinates},properties{id,iconCategory,description,from,to}}}",
                 },
             )
         except httpx.HTTPError as exc:

@@ -1,10 +1,10 @@
-from typing import List, Optional
+from typing import List, Optional, Union, Any
 from pydantic import BaseModel, Field
 
 
 class IncidentGeometry(BaseModel):
     type: str = "Point"
-    coordinates: List[float] = Field(default_factory=list)
+    coordinates: Any = Field(default_factory=list)
 
 
 class Incident(BaseModel):

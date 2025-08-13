@@ -86,7 +86,7 @@ export const useMapStore = create<MapState>((set) => ({
 
   // Default map settings
   mapSettings: {
-    autoRefresh: true,
+    autoRefresh: false,
     refreshInterval: 60, // 60 seconds
     showDebugInfo: false,
   },

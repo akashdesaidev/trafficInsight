@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Search, MapPin, Clock, X } from "lucide-react";
+import { Search, MapPin, Clock, X, Navigation } from "lucide-react";
 import { useMapStore } from "@/store/mapStore";
 
 interface SearchResult {
@@ -17,9 +17,10 @@ interface SearchResult {
 
 interface Props {
   onLocationSelect?: (location: { lon: number; lat: number; name: string }) => void;
+  onRouteRequest?: (location: { lon: number; lat: number; name: string }) => void;
 }
 
-export default function LocationSearch({ onLocationSelect }: Props) {
+export default function LocationSearch({ onLocationSelect, onRouteRequest }: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -123,9 +124,9 @@ export default function LocationSearch({ onLocationSelect }: Props) {
   };
 
   return (
-    <div ref={searchRef} className="relative w-full max-w-md">
+    <div ref={searchRef} className="relative w-full">
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+        <Search className="absolute left-3 top-3.5 text-gray-400 h-4 w-4" />
         <input
           ref={inputRef}
           type="text"
@@ -133,12 +134,12 @@ export default function LocationSearch({ onLocationSelect }: Props) {
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => setShowResults(query.length >= 2 || recentSearches.length > 0)}
           placeholder="Search for a location..."
-          className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+          className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-white text-sm"
         />
         {query && (
           <button
             onClick={clearSearch}
-            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            className="absolute right-3 top-3.5 text-gray-400 hover:text-gray-600"
           >
             <X className="h-4 w-4" />
           </button>
@@ -146,7 +147,7 @@ export default function LocationSearch({ onLocationSelect }: Props) {
       </div>
 
       {showResults && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-80 overflow-y-auto">
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-50 max-h-80 overflow-y-auto">
           {loading && (
             <div className="p-3 text-center text-gray-500">
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500 mx-auto"></div>
@@ -183,22 +184,44 @@ export default function LocationSearch({ onLocationSelect }: Props) {
           {!loading && results.length > 0 && (
             <div>
               {results.map((item) => (
-                <button
+                <div
                   key={item.id}
-                  onClick={() => handleLocationSelect(item)}
-                  className="w-full px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-3"
+                  className="w-full hover:bg-gray-50 dark:hover:bg-gray-700"
                 >
-                  <MapPin className="h-4 w-4 text-gray-400" />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                      {displayName(item)}
-                    </div>
-                    <div className="text-xs text-gray-500 truncate">{item.address}</div>
+                  <div className="flex items-center">
+                    <button
+                      onClick={() => handleLocationSelect(item)}
+                      className="flex-1 px-3 py-2 text-left flex items-center gap-3"
+                    >
+                      <MapPin className="h-4 w-4 text-gray-400" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                          {displayName(item)}
+                        </div>
+                        <div className="text-xs text-gray-500 truncate">{item.address}</div>
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        {Math.round(item.score * 100)}%
+                      </div>
+                    </button>
+                    {onRouteRequest && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRouteRequest({
+                            lon: item.lon,
+                            lat: item.lat,
+                            name: displayName(item),
+                          });
+                        }}
+                        className="px-2 py-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-r"
+                        title="Get directions"
+                      >
+                        <Navigation className="h-4 w-4" />
+                      </button>
+                    )}
                   </div>
-                  <div className="text-xs text-gray-400">
-                    {Math.round(item.score * 100)}%
-                  </div>
-                </button>
+                </div>
               ))}
             </div>
           )}
