@@ -11,14 +11,34 @@ class Settings(BaseSettings):
     )
     redis_url: str = "redis://localhost:6379/0"
 
-    tomtom_maps_api_key: str = "EvQfbleOxpuHzwwvBjclEH8SxX4NJfQm"
-    tomtom_traffic_api_key: str = "EvQfbleOxpuHzwwvBjclEH8SxX4NJfQm"
-    tomtom_search_api_key: str = "EvQfbleOxpuHzwwvBjclEH8SxX4NJfQm"
+    tomtom_maps_api_key: str = "bj8ffmozYn3Fyd1MAuL2bMza78Y7AM6d"
+    tomtom_traffic_api_key: str = "bj8ffmozYn3Fyd1MAuL2bMza78Y7AM6d"
+    tomtom_search_api_key: str = "bj8ffmozYn3Fyd1MAuL2bMza78Y7AM6d"
     tomtom_stats_api_key: str = "UioZXOMob9uDIYtE2ZwLBTBOjtyPJBKc"
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False
     )
+    
+    @property
+    def clean_tomtom_maps_api_key(self) -> str:
+        """Clean API key by removing extra quotes and whitespace"""
+        return self.tomtom_maps_api_key.strip().strip('"').strip("'")
+    
+    @property 
+    def clean_tomtom_traffic_api_key(self) -> str:
+        """Clean API key by removing extra quotes and whitespace"""
+        return self.tomtom_traffic_api_key.strip().strip('"').strip("'")
+    
+    @property
+    def clean_tomtom_search_api_key(self) -> str:
+        """Clean API key by removing extra quotes and whitespace"""  
+        return self.tomtom_search_api_key.strip().strip('"').strip("'")
+    
+    @property
+    def clean_tomtom_stats_api_key(self) -> str:
+        """Clean API key by removing extra quotes and whitespace"""
+        return self.tomtom_stats_api_key.strip().strip('"').strip("'")
 
 
 @lru_cache

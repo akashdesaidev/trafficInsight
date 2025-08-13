@@ -13,7 +13,7 @@ router = APIRouter(prefix="/traffic", tags=["traffic"])
 @router.get("/live-traffic", response_model=LiveTrafficResponse)
 async def get_live_traffic() -> LiveTrafficResponse:
     settings = get_settings()
-    api_key = settings.tomtom_traffic_api_key or settings.tomtom_maps_api_key
+    api_key = settings.clean_tomtom_traffic_api_key or settings.clean_tomtom_maps_api_key
     if not api_key:
         raise HTTPException(status_code=500, detail="TomTom API key not configured")
     # Using raster tiles for simple overlay
@@ -106,7 +106,7 @@ async def get_traffic_incidents(
     timeValidityFilter: str = Query("present"),
 ) -> IncidentsResponse:
     settings = get_settings()
-    api_key = settings.tomtom_traffic_api_key or settings.tomtom_maps_api_key
+    api_key = settings.clean_tomtom_traffic_api_key or settings.clean_tomtom_maps_api_key
     if not api_key:
         raise HTTPException(status_code=500, detail="TomTom API key not configured")
 
@@ -173,7 +173,7 @@ async def get_traffic_tile(
 ) -> Response:
     """Proxy TomTom traffic flow raster tiles to avoid client-side key exposure/referer issues."""
     settings = get_settings()
-    api_key = settings.tomtom_traffic_api_key or settings.tomtom_maps_api_key
+    api_key = settings.clean_tomtom_traffic_api_key or settings.clean_tomtom_maps_api_key
     if not api_key:
         raise HTTPException(status_code=500, detail="TomTom API key not configured")
 

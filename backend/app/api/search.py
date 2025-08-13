@@ -18,7 +18,7 @@ async def search_autocomplete(
 ) -> SearchResponse:
     """Search for locations with autocomplete functionality using TomTom Search API."""
     settings = get_settings()
-    api_key = settings.tomtom_search_api_key or settings.tomtom_maps_api_key
+    api_key = settings.clean_tomtom_search_api_key or settings.clean_tomtom_maps_api_key
     if not api_key:
         raise HTTPException(status_code=500, detail="TomTom Search API key not configured")
 
@@ -89,7 +89,7 @@ async def geocode_reverse(
 ) -> SearchResponse:
     """Reverse geocoding to get address from coordinates."""
     settings = get_settings()
-    api_key = settings.tomtom_search_api_key or settings.tomtom_maps_api_key
+    api_key = settings.clean_tomtom_search_api_key or settings.clean_tomtom_maps_api_key
     if not api_key:
         raise HTTPException(status_code=500, detail="TomTom Search API key not configured")
 
@@ -150,7 +150,7 @@ async def geocode_reverse(
 async def calculate_route(route_request: RouteRequest = Body(...)) -> RouteResponse:
     """Calculate route between waypoints using TomTom Routing API."""
     settings = get_settings()
-    api_key = settings.tomtom_search_api_key or settings.tomtom_maps_api_key
+    api_key = settings.clean_tomtom_search_api_key or settings.clean_tomtom_maps_api_key
     if not api_key:
         raise HTTPException(status_code=500, detail="TomTom Routing API key not configured")
 
