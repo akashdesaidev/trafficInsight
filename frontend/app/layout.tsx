@@ -37,10 +37,7 @@ export default function RootLayout({
             </nav>
           </header>
           <div className="flex flex-1 min-h-0">
-            <aside className="hidden md:block w-72 border-r p-4 text-sm text-muted-foreground">
-              Sidebar — controls coming soon
-            </aside>
-            <div className="flex-1 min-w-0">{children}</div>
+            {children}
           </div>
         </div>
       </body>

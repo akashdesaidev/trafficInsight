@@ -38,18 +38,24 @@ export default function MapContainer({ onAreaSelect }: MapContainerProps) {
   const mapRef = useRef<TomTomMap | null>(null);
   const [map, setMap] = useState<TomTomMap | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
-  const [showTraffic, setShowTraffic] = useState(true);
-  const [showIncidents, setShowIncidents] = useState(true);
+  // Use global state for traffic and incidents
+  const trafficLayer = useMapStore((s) => s.trafficLayer);
+  const incidentLayer = useMapStore((s) => s.incidentLayer);
+  const mapSettings = useMapStore((s) => s.mapSettings);
+  const setTrafficVisible = useMapStore((s) => s.setTrafficVisible);
+  const setIncidentsVisible = useMapStore((s) => s.setIncidentsVisible);
   const [routeDrawingEnabled, setRouteDrawingEnabled] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
-  const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
+  const [userLocation, setUserLocation] = useState<[number, number] | null>(
+    null
+  );
 
   const setCenter = useMapStore((s) => s.setCenter);
   const setZoom = useMapStore((s) => s.setZoom);
 
   const addLocationMarker = (coordinates: [number, number]) => {
     if (!map) return;
-    
+
     try {
       // Remove existing location marker if present
       if (map.getSource && map.getSource("user-location")) {
@@ -67,10 +73,10 @@ export default function MapContainer({ onAreaSelect }: MapContainerProps) {
           type: "Feature",
           geometry: {
             type: "Point",
-            coordinates: coordinates
+            coordinates: coordinates,
           },
-          properties: {}
-        }
+          properties: {},
+        },
       });
 
       // Add accuracy circle layer (light blue circle)
@@ -84,8 +90,8 @@ export default function MapContainer({ onAreaSelect }: MapContainerProps) {
           "circle-opacity": 0.2,
           "circle-stroke-width": 1,
           "circle-stroke-color": "#4285F4",
-          "circle-stroke-opacity": 0.4
-        }
+          "circle-stroke-opacity": 0.4,
+        },
       });
 
       // Add location dot layer (blue dot with white border)
@@ -97,8 +103,8 @@ export default function MapContainer({ onAreaSelect }: MapContainerProps) {
           "circle-radius": 8,
           "circle-color": "#4285F4",
           "circle-stroke-width": 2,
-          "circle-stroke-color": "#FFFFFF"
-        }
+          "circle-stroke-color": "#FFFFFF",
+        },
       });
     } catch (error) {
       console.error("Error adding location marker:", error);
@@ -116,23 +122,23 @@ export default function MapContainer({ onAreaSelect }: MapContainerProps) {
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const { latitude, longitude } = position.coords;
-        
+
         if (map && map.setCenter && map.setZoom) {
           // Center map on user's location
           map.setCenter([longitude, latitude]);
           map.setZoom(16); // Zoom in for better view
-          
+
           // Update store
           setCenter([longitude, latitude]);
           setZoom(16);
-          
+
           // Set user location for marker
           setUserLocation([longitude, latitude]);
-          
+
           // Add location marker
           addLocationMarker([longitude, latitude]);
         }
-        
+
         setIsLocating(false);
       },
       (error) => {
@@ -163,58 +169,108 @@ export default function MapContainer({ onAreaSelect }: MapContainerProps) {
     let isMounted = true;
     if (!mapElementRef.current || mapRef.current) return;
 
-    const apiKey = process.env.NEXT_PUBLIC_TOMTOM_API_KEY;
-    if (!apiKey) {
-      setInitError("Missing NEXT_PUBLIC_TOMTOM_API_KEY");
-      return;
-    }
+    // Add a small delay to ensure container is properly rendered
+    setTimeout(() => {
+      if (!isMounted || !mapElementRef.current) return;
 
-    // Dynamically import to avoid SSR/global scope issues
-    import("@tomtom-international/web-sdk-maps")
-      .then((module) => {
-        const tt = module as unknown as TomTomModule;
-        if (!isMounted || !mapElementRef.current) return;
-        const map = tt.default.map({
-          key: apiKey,
-          container: mapElementRef.current,
-          center: [77.5946, 12.9716],
-          zoom: 10,
+      const apiKey = process.env.NEXT_PUBLIC_TOMTOM_API_KEY;
+      console.log(
+        "TomTom API Key available:",
+        !!apiKey,
+        "Length:",
+        apiKey?.length
+      );
+      if (!apiKey) {
+        setInitError("Missing NEXT_PUBLIC_TOMTOM_API_KEY");
+        return;
+      }
+
+      // Dynamically import to avoid SSR/global scope issues
+      import("@tomtom-international/web-sdk-maps")
+        .then((module) => {
+          const tt = module as unknown as TomTomModule;
+          if (!isMounted || !mapElementRef.current) return;
+          console.log(
+            "Initializing TomTom map with key:",
+            apiKey.substring(0, 4) + "..." + apiKey.substring(apiKey.length - 4)
+          );
+          console.log("Map container element:", mapElementRef.current);
+          const containerDimensions = {
+            width: mapElementRef.current?.offsetWidth,
+            height: mapElementRef.current?.offsetHeight,
+            clientWidth: mapElementRef.current?.clientWidth,
+            clientHeight: mapElementRef.current?.clientHeight,
+          };
+          console.log("Container dimensions:", containerDimensions);
+
+          // Check if container has zero dimensions
+          if (!containerDimensions.height || containerDimensions.height === 0) {
+            console.error(
+              "Map container has zero height! This will prevent the map from rendering."
+            );
+            setInitError("Map container has no height. Check CSS layout.");
+            return;
+          }
+          const map = tt.default.map({
+            key: apiKey,
+            container: mapElementRef.current,
+            center: [77.5946, 12.9716],
+            zoom: 10,
+          });
+          console.log("TomTom map created successfully:", !!map);
+
+          // Wait for map to be ready
+          map.on("load", () => {
+            console.log("TomTom map loaded and ready");
+            // Force a resize to ensure proper rendering
+            setTimeout(() => {
+              map.resize();
+              console.log("Map resized");
+            }, 100);
+          });
+
+          map.on("error", (error) => {
+            console.error("TomTom map error:", error);
+          });
+
+          // Add basic navigation controls if available
+          if (tt?.default?.NavigationControl) {
+            map.addControl(new tt.default.NavigationControl());
+            console.log("Navigation controls added");
+          }
+
+          mapRef.current = map;
+          setMap(map); // Also set the state so components re-render
+
+          console.log("Map setup complete");
+
+          const onResize = () => map.resize();
+          const onMoveEnd = () => {
+            const center = map?.getCenter?.();
+            const zoom = map?.getZoom?.();
+            if (center && typeof zoom === "number") {
+              setCenter([center.lng, center.lat]);
+              setZoom(zoom);
+            }
+          };
+          window.addEventListener("resize", onResize);
+          // @ts-expect-error tomtom types are not available
+          map.on("moveend", onMoveEnd);
+
+          return () => {
+            window.removeEventListener("resize", onResize);
+            if (map.off) {
+              map.off("moveend", onMoveEnd as unknown as () => void);
+            }
+            map.remove();
+            mapRef.current = null;
+            setMap(null); // Also clear the state
+          };
+        })
+        .catch((err) => {
+          if (isMounted) setInitError((err as Error).message);
         });
-
-        // Add basic navigation controls if available
-        if (tt?.default?.NavigationControl) {
-          map.addControl(new tt.default.NavigationControl());
-        }
-
-        mapRef.current = map;
-        setMap(map); // Also set the state so components re-render
-
-        const onResize = () => map.resize();
-        const onMoveEnd = () => {
-          const center = map?.getCenter?.();
-          const zoom = map?.getZoom?.();
-          if (center && typeof zoom === "number") {
-            setCenter([center.lng, center.lat]);
-            setZoom(zoom);
-          }
-        };
-        window.addEventListener("resize", onResize);
-        // @ts-expect-error tomtom types are not available
-        map.on("moveend", onMoveEnd);
-
-        return () => {
-          window.removeEventListener("resize", onResize);
-          if (map.off) {
-            map.off("moveend", onMoveEnd as unknown as () => void);
-          }
-          map.remove();
-          mapRef.current = null;
-          setMap(null); // Also clear the state
-        };
-      })
-      .catch((err) => {
-        if (isMounted) setInitError((err as Error).message);
-      });
+    }, 100); // 100ms delay
 
     return () => {
       isMounted = false;
@@ -222,7 +278,7 @@ export default function MapContainer({ onAreaSelect }: MapContainerProps) {
   }, [setCenter, setZoom]);
 
   return (
-    <div className="h-[calc(100vh-64px)] w-full relative">
+    <div className="h-full w-full relative min-h-[400px]">
       {!process.env.NEXT_PUBLIC_TOMTOM_API_KEY ? (
         <div className="absolute inset-0 flex items-center justify-center text-sm text-red-600">
           Set NEXT_PUBLIC_TOMTOM_API_KEY to load the map
@@ -233,12 +289,17 @@ export default function MapContainer({ onAreaSelect }: MapContainerProps) {
           {initError}
         </div>
       ) : null}
-      <div ref={mapElementRef} className="h-full w-full" />
+      <div
+        ref={mapElementRef}
+        className="h-full w-full bg-gray-100 min-h-[400px]"
+        style={{ minHeight: "400px", height: "100%", width: "100%" }}
+      />
+
       {/* Overlays */}
       {/* <TrafficLayer visible={showTraffic} map={map} /> */}
-      <SimpleTrafficOverlay visible={showTraffic} map={map} />
+      <SimpleTrafficOverlay visible={trafficLayer.visible} map={map} />
       <IncidentMarkers
-        visible={showIncidents}
+        visible={incidentLayer.visible}
         map={map}
         bboxProvider={() => {
           const m = map;
@@ -263,60 +324,13 @@ export default function MapContainer({ onAreaSelect }: MapContainerProps) {
         <LocationSearch />
       </div>
 
-      {/* Controls Panel */}
-      <div className="absolute top-4 left-4 z-10 bg-white/90 dark:bg-black/60 backdrop-blur rounded-md shadow border p-2 space-y-2 text-sm">
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={showTraffic}
-            onChange={(e) => setShowTraffic(e.target.checked)}
-          />
-          Traffic flow
-        </label>
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={showIncidents}
-            onChange={(e) => setShowIncidents(e.target.checked)}
-          />
-          Incidents
-        </label>
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={routeDrawingEnabled}
-            onChange={(e) => setRouteDrawingEnabled(e.target.checked)}
-          />
-          Route drawing
-        </label>
-        {onAreaSelect && (
-          <button
-            className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors"
-            onClick={() => {
-              if (map?.getBounds) {
-                const bounds = map.getBounds();
-                const sw = bounds.getSouthWest();
-                const ne = bounds.getNorthEast();
-                const bbox: [number, number, number, number] = [
-                  sw.lng,
-                  sw.lat,
-                  ne.lng,
-                  ne.lat,
-                ];
-                onAreaSelect(bbox, "Selected Area");
-              }
-            }}
-          >
-            Select Area for Analytics
-          </button>
-        )}
-      </div>
+      {/* Old controls panel removed - now using sidebar */}
 
       {/* Current Location Button - Bottom Right (Google Maps style) */}
       <button
         className={`absolute bottom-6 right-6 z-10 w-12 h-12 rounded-full shadow-lg transition-all duration-200 flex items-center justify-center ${
-          isLocating 
-            ? "bg-gray-400 cursor-not-allowed" 
+          isLocating
+            ? "bg-gray-400 cursor-not-allowed"
             : "bg-white hover:bg-gray-50 active:bg-gray-100 hover:shadow-xl"
         }`}
         onClick={getCurrentLocation}

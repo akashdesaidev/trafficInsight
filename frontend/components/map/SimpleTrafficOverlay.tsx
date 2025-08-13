@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useMapStore } from "@/store/mapStore";
 import type { TomTomMap } from "@/types/tomtom";
 
 interface Props {
@@ -10,6 +11,9 @@ interface Props {
 
 export default function SimpleTrafficOverlay({ visible, map }: Props) {
   const [isMapReady, setIsMapReady] = useState(false);
+  
+  // Get traffic layer settings from global state
+  const trafficLayer = useMapStore((state) => state.trafficLayer);
 
   // Check if map is ready for layer operations
   useEffect(() => {
@@ -93,10 +97,15 @@ export default function SimpleTrafficOverlay({ visible, map }: Props) {
           map.removeSource("simple-traffic-flow");
         }
 
-        // Add traffic tile layer with relative0 style (thickness not supported for relative0)
+        // Build tile URL with current settings
+        const tileUrl = `/api/traffic/tiles/{z}/{x}/{y}.png?style=${trafficLayer.style}&thickness=${trafficLayer.thickness}`;
+        
+        console.log("Adding traffic layer with URL:", tileUrl, "opacity:", trafficLayer.opacity / 100);
+        
+        // Add traffic tile layer with current settings
         map.addSource("simple-traffic-flow", {
           type: "raster",
-          tiles: ["/api/traffic/tiles/{z}/{x}/{y}.png?style=relative0"],
+          tiles: [tileUrl],
           tileSize: 256,
         });
 
@@ -105,7 +114,7 @@ export default function SimpleTrafficOverlay({ visible, map }: Props) {
           type: "raster",
           source: "simple-traffic-flow",
           paint: {
-            "raster-opacity": 0.9
+            "raster-opacity": trafficLayer.opacity / 100
           },
           minzoom: 0,
           maxzoom: 22,
@@ -150,7 +159,7 @@ export default function SimpleTrafficOverlay({ visible, map }: Props) {
         map.removeSource("simple-traffic-flow");
       }
     };
-  }, [visible, map, isMapReady]);
+  }, [visible, map, isMapReady, trafficLayer.opacity, trafficLayer.style, trafficLayer.thickness]);
 
   return null;
 }
