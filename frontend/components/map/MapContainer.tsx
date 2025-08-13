@@ -42,6 +42,7 @@ export default function MapContainer({ onAreaSelect }: MapContainerProps) {
   const trafficLayer = useMapStore((s) => s.trafficLayer);
   const incidentLayer = useMapStore((s) => s.incidentLayer);
   const mapSettings = useMapStore((s) => s.mapSettings);
+  const sidebarCollapsed = useMapStore((s) => s.sidebarCollapsed);
   const setTrafficVisible = useMapStore((s) => s.setTrafficVisible);
   const setIncidentsVisible = useMapStore((s) => s.setIncidentsVisible);
   const [routeDrawingEnabled, setRouteDrawingEnabled] = useState(false);
@@ -276,6 +277,17 @@ export default function MapContainer({ onAreaSelect }: MapContainerProps) {
       isMounted = false;
     };
   }, [setCenter, setZoom]);
+
+  // Handle sidebar toggle - resize map when sidebar collapses/expands
+  useEffect(() => {
+    if (map && map.resize) {
+      // Small delay to ensure layout has updated
+      setTimeout(() => {
+        map.resize();
+        console.log("Map resized due to sidebar toggle:", sidebarCollapsed);
+      }, 300);
+    }
+  }, [map, sidebarCollapsed]);
 
   return (
     <div className="h-full w-full relative min-h-[400px]">

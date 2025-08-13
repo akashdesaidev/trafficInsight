@@ -19,7 +19,6 @@ export default function Home() {
       }
     | undefined
   >(undefined);
-
   const sidebarCollapsed = useMapStore((state) => state.sidebarCollapsed);
 
   const handleAreaSelect = (
@@ -33,7 +32,9 @@ export default function Home() {
   return (
     <div className="flex w-full h-[calc(100vh-64px)]">
       {/* Sidebar */}
-      <div className="hidden md:block max-h-screen overflow-x-hidden overflow-y-auto">
+      <div
+        className={`hidden md:block max-h-screen overflow-x-hidden overflow-y-auto transition-all duration-200`}
+      >
         <TrafficControlSidebar
           selectedArea={selectedArea}
           onAnalyticsOpen={() => setIsAnalyticsPanelOpen(true)}
@@ -42,7 +43,11 @@ export default function Home() {
       </div>
 
       {/* Main Content */}
-      <main className={`flex-1 p-2 relative transition-all duration-200`}>
+      <main
+        className={`flex-1 p-2 relative transition-all duration-200 ${
+          sidebarCollapsed ? "w-full" : ""
+        }`}
+      >
         <MapContainer onAreaSelect={handleAreaSelect} />
 
         {/* Mobile Analytics Button */}
