@@ -11,10 +11,10 @@ class Settings(BaseSettings):
     )
     redis_url: str = "redis://localhost:6379/0"
 
-    tomtom_maps_api_key: str = "bj8ffmozYn3Fyd1MAuL2bMza78Y7AM6d"
-    tomtom_traffic_api_key: str = "bj8ffmozYn3Fyd1MAuL2bMza78Y7AM6d"
-    tomtom_search_api_key: str = "bj8ffmozYn3Fyd1MAuL2bMza78Y7AM6d"
-    tomtom_stats_api_key: str = "UioZXOMob9uDIYtE2ZwLBTBOjtyPJBKc"
+    tomtom_maps_api_key: str = ""
+    tomtom_traffic_api_key: str = ""
+    tomtom_search_api_key: str = ""
+    tomtom_stats_api_key: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False

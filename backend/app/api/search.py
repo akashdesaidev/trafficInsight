@@ -64,8 +64,8 @@ async def search_autocomplete(
         result = SearchResult(
             id=item.get("id", ""),
             address=address.get("freeformAddress", ""),
-            position_lat=position.get("lat", 0.0),
-            position_lon=position.get("lon", 0.0),
+            lat=position.get("lat", 0.0),
+            lon=position.get("lon", 0.0),
             score=item.get("score", 0.0),
             country=address.get("country", ""),
             countryCode=address.get("countryCode", ""),
@@ -125,13 +125,22 @@ async def geocode_reverse(
     results = []
     for item in data.get("addresses", []):
         address = item.get("address", {})
-        position = item.get("position", {})
+        position_str = item.get("position", "")
+        
+        # Parse position string "lat,lon" format
+        try:
+            if "," in position_str:
+                position_lat, position_lon = map(float, position_str.split(","))
+            else:
+                position_lat, position_lon = lat, lon
+        except (ValueError, TypeError):
+            position_lat, position_lon = lat, lon
         
         result = SearchResult(
-            id=f"reverse_{lat}_{lon}",
+            id=item.get("id", f"reverse_{lat}_{lon}"),
             address=address.get("freeformAddress", ""),
-            position_lat=position.get("lat", lat),
-            position_lon=position.get("lon", lon),
+            lat=position_lat,
+            lon=position_lon,
             score=1.0,
             country=address.get("country", ""),
             countryCode=address.get("countryCode", ""),

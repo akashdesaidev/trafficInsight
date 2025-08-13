@@ -33,7 +33,7 @@ export default function Home() {
   return (
     <div className="flex w-full h-[calc(100vh-64px)]">
       {/* Sidebar */}
-      <div className="hidden md:block max-h-screen overflow-y-auto">
+      <div className="hidden md:block max-h-screen overflow-x-hidden overflow-y-auto">
         <TrafficControlSidebar
           selectedArea={selectedArea}
           onAnalyticsOpen={() => setIsAnalyticsPanelOpen(true)}
