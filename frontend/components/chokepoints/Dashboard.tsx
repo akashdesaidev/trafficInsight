@@ -10,6 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 import { ChokepointDetailModal } from "./DetailModal";
+import LiveLeaderboard from "./LiveLeaderboard";
 
 interface ChokepointDashboardProps {
   selectedArea?: {
@@ -398,10 +399,13 @@ export function ChokepointDashboard({ selectedArea, onChokepointSelect }: Chokep
         </div>
       )}
 
-      {/* Choke Points List */}
+      {/* Live Leaderboard */}
+      <LiveLeaderboard selectedArea={selectedArea} />
+
+      {/* Historical/Analysis Choke Points List */}
       <Card>
         <CardHeader>
-          <CardTitle>Ranked Choke Points</CardTitle>
+          <CardTitle>Ranked Choke Points (Historical/Analysis)</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (

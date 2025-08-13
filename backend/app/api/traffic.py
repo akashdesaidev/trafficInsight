@@ -6,6 +6,7 @@ import httpx
 from app.core.config import get_settings
 from app.models.traffic import IncidentsResponse, Incident, LiveTrafficResponse, TrafficFlowResponse, TrafficFlowPoint
 from app.services.cache import get_cache
+from app.services.live_chokepoints import LiveChokepointService
 
 router = APIRouter(prefix="/traffic", tags=["traffic"])
 
@@ -161,6 +162,43 @@ async def get_traffic_incidents(
     result = IncidentsResponse(incidents=incidents_list)
     cache.set(cache_key, result.model_dump(), ttl_seconds=120)
     return result
+
+
+@router.get("/live-chokepoints")
+async def get_live_chokepoints(
+    bbox: str = Query(..., description="minLon,minLat,maxLon,maxLat"),
+    z: int = Query(13, ge=0, le=22),
+    eps_m: int = Query(200, ge=50, le=1000),
+    min_samples: int = Query(3, ge=1, le=20),
+    jf_min: float = Query(4.0, ge=0.0, le=10.0),
+    incident_radius_m: int = Query(100, ge=0, le=1000),
+    include_geocode: bool = Query(False),
+):
+    """Live chokepoint detection using vector flow tiles (jamFactor) and DBSCAN.
+    Returns ranked clusters for the given bbox."""
+    try:
+        bbox_coords = [float(x) for x in bbox.split(',')]
+        if len(bbox_coords) != 4:
+            raise ValueError()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid bbox format. Use 'min_lon,min_lat,max_lon,max_lat'")
+
+    service = LiveChokepointService()
+    try:
+        result = await service.get_live_chokepoints(
+            bbox=bbox_coords,
+            z=z,
+            eps_m=eps_m,
+            min_samples=min_samples,
+            jf_min=jf_min,
+            incident_radius_m=incident_radius_m,
+            include_geocode=include_geocode,
+        )
+        return result
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to compute live chokepoints: {exc}")
 
 
 @router.get("/tiles/{z}/{x}/{y}.png")

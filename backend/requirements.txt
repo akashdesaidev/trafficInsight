@@ -10,4 +10,7 @@ python-dotenv
 httpx
 pydantic-settings
 Pillow
+numpy
+scikit-learn
+mapbox-vector-tile
 
