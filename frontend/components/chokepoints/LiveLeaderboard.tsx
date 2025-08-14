@@ -43,7 +43,7 @@ export default function LiveLeaderboard({ selectedArea }: Props) {
     
     try {
       // Backend now defaults to Bangalore; no bbox required
-      const url = `/api/traffic/live-chokepoints?z=14&eps_m=400&min_samples=3&jf_min=2&include_geocode=false`;
+      const url = `/api/traffic/live-chokepoints?z=14&eps_m=400&min_samples=3&jf_min=2&include_geocode=true`;
       const res = await fetch(url, { 
         signal: controller.signal,
         headers: { 'Content-Type': 'application/json' }
@@ -74,7 +74,7 @@ export default function LiveLeaderboard({ selectedArea }: Props) {
     // initial
     fetchLive();
     // poll every 60s
-    timerRef.current = window.setInterval(fetchLive, 60000);
+    timerRef.current = window.setInterval(fetchLive, 600000);
     return () => {
       if (timerRef.current) window.clearInterval(timerRef.current);
     };

@@ -11,7 +11,7 @@ from app.services.live_chokepoints import LiveChokepointService
 router = APIRouter(prefix="/traffic", tags=["traffic"])
 
 # Default Bangalore bounding box (minLon, minLat, maxLon, maxLat)
-BANGALORE_BBOX = [77.4673, 12.8546, 77.7047, 13.0793]
+BANGALORE_BBOX = [77.6234, 12.9037, 77.6625, 12.9247]
 
 
 @router.get("/live-traffic", response_model=LiveTrafficResponse)
