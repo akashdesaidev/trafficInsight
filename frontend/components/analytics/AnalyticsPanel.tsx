@@ -11,10 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 
-import { DateRangeSelector } from "./DateRangeSelector";
-import { TrafficPatternCharts } from "./TrafficPatternCharts";
-import { TrafficStatsOverview } from "./TrafficStatsOverview";
-import { CongestionHeatmap } from "./CongestionHeatmap";
+// Removed historical analytics components; focusing on live chokepoints only
 import { ChokepointDashboard } from "../chokepoints/Dashboard";
 
 interface AnalyticsPanelProps {
@@ -26,7 +23,7 @@ interface AnalyticsPanelProps {
   };
 }
 
-type AnalyticsTab = "overview" | "patterns" | "heatmap" | "chokepoints";
+type AnalyticsTab = "chokepoints";
 
 interface DatePreset {
   label: string;
@@ -35,7 +32,7 @@ interface DatePreset {
 }
 
 export function AnalyticsPanel({ isOpen, onClose, selectedArea }: AnalyticsPanelProps) {
-  const [activeTab, setActiveTab] = useState<AnalyticsTab>("overview");
+  const [activeTab, setActiveTab] = useState<AnalyticsTab>("chokepoints");
   const [dateRange, setDateRange] = useState<DateRange>(() => {
     const today = new Date();
     return {
@@ -45,32 +42,7 @@ export function AnalyticsPanel({ isOpen, onClose, selectedArea }: AnalyticsPanel
   });
   const [isLoading, setIsLoading] = useState(false);
 
-  const datePresets: DatePreset[] = [
-    {
-      label: "Last 7 days",
-      key: "7d",
-      range: {
-        from: startOfDay(subDays(new Date(), 7)),
-        to: endOfDay(new Date())
-      }
-    },
-    {
-      label: "Last 30 days",
-      key: "30d",
-      range: {
-        from: startOfDay(subDays(new Date(), 30)),
-        to: endOfDay(new Date())
-      }
-    },
-    {
-      label: "Last 90 days",
-      key: "90d",
-      range: {
-        from: startOfDay(subDays(new Date(), 90)),
-        to: endOfDay(new Date())
-      }
-    }
-  ];
+  const datePresets: DatePreset[] = [];
 
   const formatDateRange = (range: DateRange) => {
     if (!range.from || !range.to) return "Select date range";
@@ -118,70 +90,11 @@ export function AnalyticsPanel({ isOpen, onClose, selectedArea }: AnalyticsPanel
 
         {/* Date Range Selector */}
         <div className="p-4 border-b bg-muted/30">
-          <div className="flex flex-wrap items-center gap-2 mb-3">
-            <Calendar className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">Time Period:</span>
-            <Badge variant="secondary" className="text-xs">
-              {formatDateRange(dateRange)}
-            </Badge>
-          </div>
-          
-          <div className="flex flex-wrap gap-2 mb-3">
-            {datePresets.map((preset) => (
-              <Button
-                key={preset.key}
-                variant="outline"
-                size="sm"
-                onClick={() => handlePresetClick(preset)}
-                className="h-7 text-xs"
-              >
-                {preset.label}
-              </Button>
-            ))}
-          </div>
-
-          <DateRangeSelector
-            dateRange={dateRange}
-            onDateRangeChange={handleDateRangeChange}
-            maxRange={90} // Maximum 90 days
-          />
+          <div className="text-sm text-muted-foreground">Live chokepoints (no date range needed)</div>
         </div>
 
         {/* Tab Navigation */}
         <div className="flex border-b">
-          <button
-            onClick={() => setActiveTab("overview")}
-            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
-              activeTab === "overview"
-                ? "border-b-2 border-primary text-primary"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <TrendingUp className="h-4 w-4" />
-            Overview
-          </button>
-          <button
-            onClick={() => setActiveTab("patterns")}
-            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
-              activeTab === "patterns"
-                ? "border-b-2 border-primary text-primary"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Clock className="h-4 w-4" />
-            Patterns
-          </button>
-          <button
-            onClick={() => setActiveTab("heatmap")}
-            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
-              activeTab === "heatmap"
-                ? "border-b-2 border-primary text-primary"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <BarChart3 className="h-4 w-4" />
-            Heatmap
-          </button>
           <button
             onClick={() => setActiveTab("chokepoints")}
             className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
@@ -207,30 +120,6 @@ export function AnalyticsPanel({ isOpen, onClose, selectedArea }: AnalyticsPanel
 
             {!isLoading && (
               <>
-                {activeTab === "overview" && (
-                  <TrafficStatsOverview
-                    dateRange={dateRange}
-                    selectedArea={selectedArea}
-                    onLoadingChange={setIsLoading}
-                  />
-                )}
-
-                {activeTab === "patterns" && (
-                  <TrafficPatternCharts
-                    dateRange={dateRange}
-                    selectedArea={selectedArea}
-                    onLoadingChange={setIsLoading}
-                  />
-                )}
-
-                {activeTab === "heatmap" && (
-                  <CongestionHeatmap
-                    dateRange={dateRange}
-                    selectedArea={selectedArea}
-                    onLoadingChange={setIsLoading}
-                  />
-                )}
-
                 {activeTab === "chokepoints" && (
                   <ChokepointDashboard
                     selectedArea={selectedArea}

@@ -25,6 +25,7 @@ interface MapState {
   center: [number, number];
   zoom: number;
   selectedLocation?: { lon: number; lat: number; name?: string } | null;
+  bounds?: [number, number, number, number] | null; // [minLon, minLat, maxLon, maxLat]
 
   // Layer settings
   trafficLayer: TrafficLayerSettings;
@@ -38,6 +39,7 @@ interface MapState {
   setCenter: (center: [number, number]) => void;
   setZoom: (zoom: number) => void;
   setSelectedLocation: (loc: MapState["selectedLocation"]) => void;
+  setBounds: (bounds: [number, number, number, number]) => void;
 
   // Traffic layer actions
   setTrafficVisible: (visible: boolean) => void;
@@ -67,10 +69,11 @@ export const useMapStore = create<MapState>((set) => ({
   center: [77.5946, 12.9716], // Bangalore, India
   zoom: 10,
   selectedLocation: null,
+  bounds: null,
 
   // Default traffic layer settings
   trafficLayer: {
-    visible: true,
+    visible: false,
     opacity: 80,
     style: "relative",
     thickness: 4,
@@ -79,7 +82,7 @@ export const useMapStore = create<MapState>((set) => ({
 
   // Default incident layer settings
   incidentLayer: {
-    visible: true,
+    visible: false,
     severityFilter: ["low", "medium", "high", "critical"],
     timeFilter: "current",
   },
@@ -98,6 +101,7 @@ export const useMapStore = create<MapState>((set) => ({
   setCenter: (center) => set({ center }),
   setZoom: (zoom) => set({ zoom }),
   setSelectedLocation: (selectedLocation) => set({ selectedLocation }),
+  setBounds: (bounds) => set({ bounds }),
 
   // Traffic layer actions
   setTrafficVisible: (visible) =>

@@ -6,8 +6,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { RefreshCw } from "lucide-react";
 
-type Bbox = [number, number, number, number];
-
 interface LiveCluster {
   id: string;
   center: { lat: number; lon: number };
@@ -18,6 +16,7 @@ interface LiveCluster {
   closure: boolean;
   support: number;
   count: number;
+  road_name?: string | null;
 }
 
 interface ApiResponse {
@@ -25,7 +24,7 @@ interface ApiResponse {
 }
 
 interface Props {
-  selectedArea?: { bbox: Bbox; name?: string };
+  selectedArea?: { bbox: [number, number, number, number]; name?: string };
 }
 
 export default function LiveLeaderboard({ selectedArea }: Props) {
@@ -34,28 +33,44 @@ export default function LiveLeaderboard({ selectedArea }: Props) {
   const [error, setError] = useState<string | null>(null);
   const timerRef = useRef<number | null>(null);
 
-  const bbox = selectedArea?.bbox;
-
   const fetchLive = async () => {
-    if (!bbox) return;
     setLoading(true);
     setError(null);
+    
+    // Create AbortController with 90-second timeout to handle slow backend processing
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 90000);
+    
     try {
-      const bboxStr = `${bbox[0]},${bbox[1]},${bbox[2]},${bbox[3]}`;
-      const url = `/api/traffic/live-chokepoints?bbox=${bboxStr}&z=13&eps_m=200&min_samples=3&jf_min=4.0`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Backend now defaults to Bangalore; no bbox required
+      const url = `/api/traffic/live-chokepoints?z=14&eps_m=400&min_samples=3&jf_min=2&include_geocode=false`;
+      const res = await fetch(url, { 
+        signal: controller.signal,
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`HTTP ${res.status}: ${errorText}`);
+      }
+      
       const data: ApiResponse = await res.json();
       setClusters(Array.isArray(data?.clusters) ? data.clusters : []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load live chokepoints");
+      clearTimeout(timeoutId);
+      if (e instanceof Error && e.name === 'AbortError') {
+        setError("Request timed out - backend processing takes >90s. Try reducing parameters or check server logs.");
+      } else {
+        setError(e instanceof Error ? e.message : "Failed to load live chokepoints");
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (!bbox) return;
     // initial
     fetchLive();
     // poll every 60s
@@ -64,7 +79,7 @@ export default function LiveLeaderboard({ selectedArea }: Props) {
       if (timerRef.current) window.clearInterval(timerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bbox?.[0], bbox?.[1], bbox?.[2], bbox?.[3]]);
+  }, []);
 
   const ranked = useMemo(() => clusters.slice().sort((a, b) => b.score - a.score), [clusters]);
 
@@ -78,43 +93,42 @@ export default function LiveLeaderboard({ selectedArea }: Props) {
         {error ? (
           <div className="text-sm text-red-600">{error}</div>
         ) : null}
-        {!bbox ? (
-          <div className="text-sm text-muted-foreground">Select an area to view live choke points.</div>
-        ) : (
-          <ScrollArea className="h-[320px]">
-            <div className="space-y-3">
-              {ranked.map((c, idx) => (
-                <div key={c.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center gap-4">
-                    <Badge variant="outline" className="w-8 h-8 rounded-full flex items-center justify-center">
-                      {idx + 1}
-                    </Badge>
-                    <div className="min-w-0">
-                      <div className="font-medium truncate">Score: {c.score.toFixed(1)}</div>
-                      <div className="text-xs text-muted-foreground">
-                        Mean: {(c.severity_mean * 100).toFixed(0)}% • Peak: {(c.severity_peak * 100).toFixed(0)}% • Points: {c.count}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Center: {c.center.lat.toFixed(5)}, {c.center.lon.toFixed(5)}
-                      </div>
+        <ScrollArea className="h-[320px]">
+          <div className="space-y-3">
+            {ranked.map((c, idx) => (
+              <div key={c.id} className="flex items-center justify-between p-4 border rounded-lg">
+                <div className="flex items-center gap-4">
+                  <Badge variant="outline" className="w-8 h-8 rounded-full flex items-center justify-center">
+                    {idx + 1}
+                  </Badge>
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">
+                      {c.road_name ? `${c.road_name}` : `Score: ${c.score.toFixed(1)}`}
+                    </div>
+                    <div className="text-xs text-muted-foreground">Score: {c.score.toFixed(1)}</div>
+                    <div className="text-xs text-muted-foreground">
+                      Mean: {(c.severity_mean * 100).toFixed(0)}% • Peak: {(c.severity_peak * 100).toFixed(0)}% • Points: {c.count}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Center: {c.center.lat.toFixed(5)}, {c.center.lon.toFixed(5)}
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    {c.incident_count > 0 ? (
-                      <Badge className="bg-orange-100 text-orange-800">Incidents: {c.incident_count}</Badge>
-                    ) : null}
-                    {c.closure ? (
-                      <Badge className="bg-purple-100 text-purple-800">Closure</Badge>
-                    ) : null}
-                  </div>
                 </div>
-              ))}
-              {ranked.length === 0 && !loading ? (
-                <div className="text-center py-8 text-muted-foreground">No live choke points detected.</div>
-              ) : null}
-            </div>
-          </ScrollArea>
-        )}
+                <div className="flex items-center gap-3">
+                  {c.incident_count > 0 ? (
+                    <Badge className="bg-orange-100 text-orange-800">Incidents: {c.incident_count}</Badge>
+                  ) : null}
+                  {c.closure ? (
+                    <Badge className="bg-purple-100 text-purple-800">Closure</Badge>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+            {ranked.length === 0 && !loading ? (
+              <div className="text-center py-8 text-muted-foreground">No live choke points detected.</div>
+            ) : null}
+          </div>
+        </ScrollArea>
       </CardContent>
     </Card>
   );

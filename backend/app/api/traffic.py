@@ -10,6 +10,9 @@ from app.services.live_chokepoints import LiveChokepointService
 
 router = APIRouter(prefix="/traffic", tags=["traffic"])
 
+# Default Bangalore bounding box (minLon, minLat, maxLon, maxLat)
+BANGALORE_BBOX = [77.4673, 12.8546, 77.7047, 13.0793]
+
 
 @router.get("/live-traffic", response_model=LiveTrafficResponse)
 async def get_live_traffic() -> LiveTrafficResponse:
@@ -111,6 +114,42 @@ async def get_traffic_incidents(
     if not api_key:
         raise HTTPException(status_code=500, detail="TomTom API key not configured")
 
+    # Parse bbox to check area
+    try:
+        bbox_coords = [float(x) for x in bbox.split(',')]
+        if len(bbox_coords) != 4:
+            raise ValueError()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid bbox format. Use 'min_lon,min_lat,max_lon,max_lat'")
+
+    # Check if bbox is too large and use service's splitting logic
+    service = LiveChokepointService()
+    area_km2 = service._calculate_bbox_area_km2(bbox_coords)
+    
+    if area_km2 > 10000:
+        # Use service's incident fetching with splitting
+        try:
+            incidents_data = await service._fetch_incidents(bbox_coords)
+            incidents_list = []
+            for item in incidents_data or []:
+                props = item.get("properties", {})
+                geometry = item.get("geometry", {})
+                incidents_list.append(
+                    Incident(
+                        id=str(props.get("id", "")),
+                        type=item.get("type"),
+                        severity=item.get("severity"),
+                        description=props.get("description"),
+                        startTime=props.get("startTime"),
+                        endTime=props.get("endTime"),
+                        geometry=geometry if geometry else None,
+                    ).model_dump()
+                )
+            return IncidentsResponse(incidents=incidents_list)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Failed to fetch incidents for large area: {exc}")
+
+    # Original single-bbox logic for smaller areas
     cache = get_cache()
     cache_key = f"incidents:{bbox}:{language}:{timeValidityFilter}"
     cached = cache.get(cache_key)
@@ -166,22 +205,18 @@ async def get_traffic_incidents(
 
 @router.get("/live-chokepoints")
 async def get_live_chokepoints(
-    bbox: str = Query(..., description="minLon,minLat,maxLon,maxLat"),
     z: int = Query(13, ge=0, le=22),
-    eps_m: int = Query(200, ge=50, le=1000),
-    min_samples: int = Query(3, ge=1, le=20),
+    eps_m: int = Query(150, ge=50, le=1000),  # Optimized for Bangalore's dense urban areas
+    min_samples: int = Query(4, ge=1, le=20),  # Increased for major corridors
     jf_min: float = Query(4.0, ge=0.0, le=10.0),
     incident_radius_m: int = Query(100, ge=0, le=1000),
     include_geocode: bool = Query(False),
 ):
     """Live chokepoint detection using vector flow tiles (jamFactor) and DBSCAN.
-    Returns ranked clusters for the given bbox."""
-    try:
-        bbox_coords = [float(x) for x in bbox.split(',')]
-        if len(bbox_coords) != 4:
-            raise ValueError()
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid bbox format. Use 'min_lon,min_lat,max_lon,max_lat'")
+    Always uses Bangalore city bounding box on the server side; no bbox input required."""
+
+    # Force Bangalore bbox regardless of client input
+    bbox_coords = BANGALORE_BBOX
 
     service = LiveChokepointService()
     try:
@@ -199,6 +234,95 @@ async def get_live_chokepoints(
         raise HTTPException(status_code=500, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to compute live chokepoints: {exc}")
+
+
+@router.get("/vector-probe")
+async def vector_probe(
+    bbox: str = Query(..., description="minLon,minLat,maxLon,maxLat"),
+    z: int = Query(13, ge=0, le=22),
+    max_samples: int = Query(10, ge=1, le=100),
+):
+    """Fetch vector flow tiles for a bbox and report sample feature properties.
+    Helps verify availability of jamFactor/currentSpeed/freeFlowSpeed in tiles.
+    """
+    try:
+        bbox_coords = [float(x) for x in bbox.split(',')]
+        if len(bbox_coords) != 4:
+            raise ValueError()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid bbox format. Use 'min_lon,min_lat,max_lon,max_lat'")
+
+    svc = LiveChokepointService()
+    min_lon, min_lat, max_lon, max_lat = bbox_coords
+    if z < 12:
+        z = 12
+    tiles = svc._tiles_for_bbox(min_lon, min_lat, max_lon, max_lat, z)
+    if len(tiles) > 32:
+        # reduce zoom if too many tiles
+        z = max(12, z - 1)
+        tiles = svc._tiles_for_bbox(min_lon, min_lat, max_lon, max_lat, z)
+    try:
+        features, used_style = await svc._fetch_decode_tiles_multi(tiles, z)  # type: ignore[attr-defined]
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Tile fetch/decode failed: {exc}")
+
+    feature_count = len(features)
+    sample_props = []
+    jam_hits = 0
+    speed_hits = 0
+    keys_union = set()
+    for f in features[:max_samples]:
+        props = f.get("properties", {}) or {}
+        sample_props.append(props)
+        keys_union.update(props.keys())
+        # jam-like
+        for k, v in props.items():
+            kl = str(k).lower()
+            if "jam" in kl or kl in ("jf", "jam_factor"):
+                jam_hits += 1
+                break
+        # speed-like
+        if any(kk in ("currentSpeed", "current_speed", "freeFlowSpeed", "free_flow_speed") for kk in props.keys()):
+            speed_hits += 1
+
+    return {
+        "zoom": z,
+        "style": used_style,
+        "tile_count": len(tiles),
+        "feature_count": feature_count,
+        "keys_sample": list(keys_union)[:25],
+        "jam_like_in_samples": jam_hits,
+        "speed_like_in_samples": speed_hits,
+        "sample_properties": sample_props,
+    }
+
+
+
+@router.get("/flow-segment")
+async def flow_segment(
+    lat: float = Query(...),
+    lon: float = Query(...),
+    style: str = Query("absolute", pattern="^(absolute|relative)$"),
+    resolution: int = Query(10, ge=1, le=100),
+    unit: str = Query("KMPH", pattern="^(KMPH|MPH)$"),
+):
+    """Proxy TomTom Flow Segment Data (JSON) for a single point.
+    Example: /api/traffic/flow-segment?lat=12.97&lon=77.59&style=absolute&resolution=10&unit=KMPH
+    """
+    settings = get_settings()
+    api_key = settings.clean_tomtom_traffic_api_key or settings.clean_tomtom_maps_api_key
+    if not api_key:
+        raise HTTPException(status_code=500, detail="TomTom API key not configured")
+    upstream = f"https://api.tomtom.com/traffic/services/4/flowSegmentData/{style}/{resolution}/json"
+    params = {"key": api_key, "point": f"{lat},{lon}", "unit": unit}
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(upstream, params=params)
+            if resp.status_code != 200:
+                raise HTTPException(status_code=resp.status_code, detail=resp.text)
+            return Response(content=resp.content, media_type="application/json")
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
 
 
 @router.get("/tiles/{z}/{x}/{y}.png")

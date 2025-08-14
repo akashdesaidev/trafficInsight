@@ -53,6 +53,7 @@ export default function MapContainer({ onAreaSelect }: MapContainerProps) {
 
   const setCenter = useMapStore((s) => s.setCenter);
   const setZoom = useMapStore((s) => s.setZoom);
+  const setBounds = useMapStore((s) => s.setBounds);
 
   const addLocationMarker = (coordinates: [number, number]) => {
     if (!map) return;
@@ -227,6 +228,14 @@ export default function MapContainer({ onAreaSelect }: MapContainerProps) {
             setTimeout(() => {
               map.resize();
               console.log("Map resized");
+              try {
+                const b = map.getBounds?.();
+                if (b) {
+                  const sw = b.getSouthWest();
+                  const ne = b.getNorthEast();
+                  setBounds([sw.lng, sw.lat, ne.lng, ne.lat]);
+                }
+              } catch {}
             }, 100);
           });
 
@@ -253,6 +262,14 @@ export default function MapContainer({ onAreaSelect }: MapContainerProps) {
               setCenter([center.lng, center.lat]);
               setZoom(zoom);
             }
+            try {
+              const b = map.getBounds?.();
+              if (b) {
+                const sw = b.getSouthWest();
+                const ne = b.getNorthEast();
+                setBounds([sw.lng, sw.lat, ne.lng, ne.lat]);
+              }
+            } catch {}
           };
           window.addEventListener("resize", onResize);
           // @ts-expect-error tomtom types are not available

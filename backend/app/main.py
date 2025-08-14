@@ -13,8 +13,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.health import router as health_router
 from app.api.traffic import router as traffic_router
 from app.api.search import router as search_router
-from app.api.historical import router as historical_router
-from app.api.chokepoints import router as chokepoints_router
 from app.api.debug import router as debug_router
 from app.core.config import get_settings
 
@@ -34,8 +32,6 @@ app.add_middleware(
 app.include_router(health_router, prefix=settings.api_v1_prefix)
 app.include_router(traffic_router, prefix=settings.api_v1_prefix)
 app.include_router(search_router, prefix=settings.api_v1_prefix)
-app.include_router(historical_router, prefix=settings.api_v1_prefix)
-app.include_router(chokepoints_router, prefix=settings.api_v1_prefix)
 app.include_router(debug_router, prefix=settings.api_v1_prefix)
 # Default configuration for uvicorn (for reference/documentation)
 # To run: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload

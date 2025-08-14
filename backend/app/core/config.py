@@ -17,7 +17,10 @@ class Settings(BaseSettings):
     tomtom_stats_api_key: str = ""
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", case_sensitive=False
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",  # Ignore unknown env vars like google_maps_api_key
     )
     
     @property

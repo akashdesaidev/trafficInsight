@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { MapPin, TrendingUp, Clock, AlertTriangle, RefreshCw, Play } from "lucide-react";
+import { MapPin, TrendingUp, Clock, AlertTriangle } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -80,76 +80,12 @@ export function ChokepointDashboard({ selectedArea, onChokepointSelect }: Chokep
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (selectedArea) {
-      fetchChokepoints();
-      fetchSummary();
-    }
+    // Historical analysis removed
   }, [selectedArea]);
 
-  const fetchChokepoints = async () => {
-    if (!selectedArea) return;
+  const fetchChokepoints = async () => {};
 
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const bbox = selectedArea.bbox.join(',');
-      const response = await fetch(`/api/top-chokepoints?limit=20&bbox=${bbox}`);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      setChokepoints(data.choke_points || []);
-    } catch (err) {
-      console.error('Error fetching chokepoints:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch choke points');
-      
-      // For demo purposes, use mock data
-      generateMockChokepoints();
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const fetchSummary = async () => {
-    if (!selectedArea) return;
-
-    try {
-      const bbox = selectedArea.bbox.join(',');
-      const response = await fetch(`/api/chokepoint-summary?bbox=${bbox}`);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      setSummary(data);
-    } catch (err) {
-      console.error('Error fetching summary:', err);
-      
-      // Mock summary data
-      setSummary({
-        total_chokepoints: 15,
-        average_congestion_score: 65.2,
-        severity_distribution: {
-          "Low": { count: 2, percentage: 13.3 },
-          "Moderate": { count: 3, percentage: 20.0 },
-          "High": { count: 5, percentage: 33.3 },
-          "Severe": { count: 4, percentage: 26.7 },
-          "Critical": { count: 1, percentage: 6.7 }
-        },
-        top_roads: [
-          { road_name: "Outer Ring Road", avg_congestion_score: 85.2, chokepoint_count: 3 },
-          { road_name: "Hosur Road", avg_congestion_score: 78.4, chokepoint_count: 2 },
-          { road_name: "Electronic City", avg_congestion_score: 72.1, chokepoint_count: 2 }
-        ],
-        last_analysis: "2024-12-26T14:30:00Z",
-        bbox: selectedArea.bbox.join(',')
-      });
-    }
-  };
+  const fetchSummary = async () => {};
 
   const generateMockChokepoints = () => {
     if (!selectedArea) return;
@@ -196,63 +132,9 @@ export function ChokepointDashboard({ selectedArea, onChokepointSelect }: Chokep
     setChokepoints(mockData);
   };
 
-  const startAnalysis = async () => {
-    if (!selectedArea) return;
+  const startAnalysis = async () => {};
 
-    setIsAnalyzing(true);
-    try {
-      const bbox = selectedArea.bbox.join(',');
-      const response = await fetch(
-        `/api/analyze-chokepoints?bbox=${bbox}&days_back=30&force_refresh=true`,
-        { method: 'POST' }
-      );
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      
-      // Poll for completion
-      await pollAnalysisStatus(data.job_id);
-    } catch (err) {
-      console.error('Error starting analysis:', err);
-      setError(err instanceof Error ? err.message : 'Failed to start analysis');
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
-
-  const pollAnalysisStatus = async (jobId: number) => {
-    const maxAttempts = 30; // 5 minutes max
-    let attempts = 0;
-
-    const poll = async () => {
-      try {
-        const response = await fetch(`/api/chokepoint-analysis-status/${jobId}`);
-        const status = await response.json();
-
-        if (status.status === 'completed') {
-          await fetchChokepoints();
-          await fetchSummary();
-          return;
-        }
-
-        if (status.status === 'failed') {
-          throw new Error(status.error_message || 'Analysis failed');
-        }
-
-        attempts++;
-        if (attempts < maxAttempts) {
-          setTimeout(poll, 10000); // Poll every 10 seconds
-        }
-      } catch (err) {
-        console.error('Error polling analysis status:', err);
-      }
-    };
-
-    poll();
-  };
+  const pollAnalysisStatus = async (_jobId: number) => {};
 
   const getSeverityBadge = (score: number) => {
     let severity = "Low";
@@ -293,23 +175,7 @@ export function ChokepointDashboard({ selectedArea, onChokepointSelect }: Chokep
             {selectedArea.name || "Selected Area"} • {chokepoints.length} choke points identified
           </p>
         </div>
-        <Button
-          onClick={startAnalysis}
-          disabled={isAnalyzing}
-          className="flex items-center gap-2"
-        >
-          {isAnalyzing ? (
-            <>
-              <RefreshCw className="h-4 w-4 animate-spin" />
-              Analyzing...
-            </>
-          ) : (
-            <>
-              <Play className="h-4 w-4" />
-              Run Analysis
-            </>
-          )}
-        </Button>
+        {/* Historical analysis removed */}
       </div>
 
       {error && (
@@ -402,72 +268,7 @@ export function ChokepointDashboard({ selectedArea, onChokepointSelect }: Chokep
       {/* Live Leaderboard */}
       <LiveLeaderboard selectedArea={selectedArea} />
 
-      {/* Historical/Analysis Choke Points List */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Ranked Choke Points (Historical/Analysis)</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <RefreshCw className="h-6 w-6 animate-spin" />
-              <span className="ml-2">Loading choke points...</span>
-            </div>
-          ) : (
-            <ScrollArea className="h-[400px]">
-              <div className="space-y-3">
-                {chokepoints.map((chokepoint) => (
-                  <div
-                    key={chokepoint.id}
-                    className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
-                    onClick={() => handleChokepointClick(chokepoint)}
-                  >
-                    <div className="flex items-center gap-4">
-                      <Badge variant="outline" className="w-8 h-8 rounded-full flex items-center justify-center">
-                        {chokepoint.rank}
-                      </Badge>
-                      
-                      <div className="min-w-0 flex-1">
-                        <h4 className="font-medium truncate">{chokepoint.road_name}</h4>
-                        <p className="text-sm text-muted-foreground">
-                          Avg delay: {chokepoint.avg_delay_minutes.toFixed(1)}min • 
-                          Peak: {dayNames[chokepoint.worst_day]} {formatTime(chokepoint.worst_hour)}
-                        </p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-xs text-muted-foreground">
-                            {chokepoint.total_observations.toLocaleString()} observations
-                          </span>
-                          <span className="text-xs text-muted-foreground">•</span>
-                          <span className="text-xs text-muted-foreground">
-                            {(chokepoint.frequency_score * 100).toFixed(0)}% congested
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className="text-right">
-                        <div className="font-semibold">
-                          {chokepoint.congestion_score.toFixed(1)}
-                        </div>
-                        <div className="text-xs text-muted-foreground">score</div>
-                      </div>
-                      {getSeverityBadge(chokepoint.congestion_score)}
-                    </div>
-                  </div>
-                ))}
-
-                {chokepoints.length === 0 && !isLoading && (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No choke points found in the selected area.
-                    Try running the analysis or selecting a different area.
-                  </div>
-                )}
-              </div>
-            </ScrollArea>
-          )}
-        </CardContent>
-      </Card>
+      {/* Historical list removed */}
 
       {/* Detail Modal */}
       {selectedChokepoint && (
