@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import tt from "@tomtom-international/web-sdk-maps";
 import { useMapStore } from "@/store/mapStore";
 
 // Import custom hooks
@@ -15,11 +16,20 @@ import IncidentMarkers from "@/components/map/IncidentMarkers";
 import IncidentPopup from "@/components/map/IncidentPopup";
 import LocationSearch from "@/components/search/LocationSearch";
 import { RouteDirections } from "@/components/route/RouteDirections";
+import LiveChokepointsDashboard from "@/components/chokepoints/LiveChokepointsDashboard";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 
 import "@tomtom-international/web-sdk-maps/dist/maps.css";
 
 export default function MapContainer() {
   const mapElementRef = useRef<HTMLDivElement | null>(null);
+  const markerRef = useRef<tt.Marker | null>(null);
+  const chokepointMarkerRef = useRef<tt.Marker | null>(null);
 
   // Global state from Zustand store
   const { trafficLayer, incidentLayer, sidebarCollapsed } = useMapStore();
@@ -30,6 +40,12 @@ export default function MapContainer() {
     lon: number;
     name: string;
   } | null>(null);
+
+  // State for on-map congestion analysis
+  const [clickedPoint, setClickedPoint] = useState<{ lat: number; lng: number } | null>(
+    null
+  );
+  const [isCongestionSheetOpen, setIsCongestionSheetOpen] = useState(false);
 
   // Custom hooks for map logic
   const { map, isMapReady, initError } = useTomTomMap(mapElementRef);
@@ -48,7 +64,76 @@ export default function MapContainer() {
     }
   }, [isMapReady, map, sidebarCollapsed]);
 
-  
+  // Effect to handle map clicks for congestion analysis
+  useEffect(() => {
+    if (!map) return;
+
+    const handleMapClick = (e: any) => {
+      const lngLat = e.lngLat;
+      setClickedPoint(lngLat);
+      setIsCongestionSheetOpen(true);
+
+      // Remove previous markers if they exist
+      if (markerRef.current) {
+        markerRef.current.remove();
+      }
+      if (chokepointMarkerRef.current) {
+        chokepointMarkerRef.current.remove();
+        chokepointMarkerRef.current = null;
+      }
+
+      // Add a new marker to the map
+      const newMarker = new tt.Marker({
+        color: "#007bff", // A distinct color for the selected point
+      })
+        .setLngLat(lngLat)
+        .addTo(map);
+
+      markerRef.current = newMarker;
+    };
+
+    map.on("click", handleMapClick);
+
+    return () => {
+      map.off("click", handleMapClick);
+      // Clean up marker when component unmounts
+      if (markerRef.current) {
+        markerRef.current.remove();
+      }
+    };
+  }, [map]);
+
+  const handleChokepointSelect = (
+    location: { lat: number; lon: number } | null
+  ) => {
+    if (chokepointMarkerRef.current) {
+      chokepointMarkerRef.current.remove();
+    }
+
+    if (location && map) {
+      const newMarker = new tt.Marker({ color: "#E63946" }) // A distinct red color
+        .setLngLat([location.lon, location.lat])
+        .addTo(map);
+
+      chokepointMarkerRef.current = newMarker;
+      map.flyTo({ center: [location.lon, location.lat], zoom: 15 });
+    }
+  };
+
+  // Effect to remove marker when sheet is closed
+  useEffect(() => {
+    if (!isCongestionSheetOpen) {
+      if (markerRef.current) {
+        markerRef.current.remove();
+        markerRef.current = null;
+      }
+      if (chokepointMarkerRef.current) {
+        chokepointMarkerRef.current.remove();
+        chokepointMarkerRef.current = null;
+      }
+      setClickedPoint(null);
+    }
+  }, [isCongestionSheetOpen]);
 
   const getMapBounds = () => {
     if (!map?.getBounds) return null;
@@ -116,6 +201,25 @@ export default function MapContainer() {
           />
         </div>
       )}
+
+      <Sheet
+        open={isCongestionSheetOpen}
+        onOpenChange={setIsCongestionSheetOpen}
+      >
+        <SheetContent side="bottom" className="h-3/4 flex flex-col">
+          <SheetHeader className="px-4 pt-4">
+            <SheetTitle>Congestion Analysis</SheetTitle>
+          </SheetHeader>
+          <div className="flex-grow min-h-0">
+            {clickedPoint && (
+              <LiveChokepointsDashboard
+                center={clickedPoint}
+                onChokepointSelect={handleChokepointSelect}
+              />
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

@@ -64,11 +64,11 @@ export default function Home() {
       </main>
 
       {/* Analytics Panel */}
-      <AnalyticsPanel
+      {/* <AnalyticsPanel
         isOpen={isAnalyticsPanelOpen}
         onClose={() => setIsAnalyticsPanelOpen(false)}
         selectedArea={selectedArea}
-      />
+      /> */}
 
       {/* Export Panel */}
       <ExportPanel
