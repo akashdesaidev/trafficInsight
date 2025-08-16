@@ -48,6 +48,8 @@ export default function MapContainer() {
     }
   }, [isMapReady, map, sidebarCollapsed]);
 
+  
+
   const getMapBounds = () => {
     if (!map?.getBounds) return null;
     const b = map.getBounds();

@@ -7,8 +7,12 @@ import math
 from app.core.config import get_settings
 from app.models.traffic import IncidentsResponse, Incident, LiveTrafficResponse, TrafficFlowResponse, TrafficFlowPoint
 from app.services.cache import get_cache
+from app.services.live_chokepoints import LiveChokepointService
 
 router = APIRouter(prefix="/traffic", tags=["traffic"])
+# Default Bangalore bounding box (minLon, minLat, maxLon, maxLat)
+BANGALORE_BBOX = [77.6234, 12.9037, 77.6625, 12.9247]
+
 
 
 def calculate_bbox_area(bbox: str) -> float:
@@ -291,3 +295,44 @@ async def generate_empty_tile() -> Response:
         ])
         headers = {"Cache-Control": "public, max-age=300"}
         return Response(content=transparent_png, media_type="image/png", headers=headers)
+
+
+@router.get("/live-chokepoints")
+async def get_live_chokepoints(
+    z: int = Query(13, ge=0, le=22),
+    eps_m: int = Query(150, ge=50, le=1000),  # Optimized for Bangalore's dense urban areas
+    min_samples: int = Query(4, ge=1, le=20),  # Increased for major corridors
+    jf_min: float = Query(4.0, ge=0.0, le=10.0),
+    incident_radius_m: int = Query(100, ge=0, le=1000),
+    include_geocode: bool = Query(False),
+    bbox: Optional[str] = Query(None, description="minLon,minLat,maxLon,maxLat")
+):
+    """Live chokepoint detection using vector flow tiles (jamFactor) and DBSCAN.
+    Always uses Bangalore city bounding box on the server side; no bbox input required."""
+
+    # Get bbox from frontend, keep it optional; if not sent, use default Bangalore bbox
+    bbox_coords = BANGALORE_BBOX
+    if bbox:
+        try:
+            bbox_coords = [float(x) for x in bbox.split(',')]
+            if len(bbox_coords) != 4:
+                raise ValueError()
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid bbox format. Use: minLon,minLat,maxLon,maxLat")
+
+    service = LiveChokepointService()
+    try:
+        result = await service.get_live_chokepoints(
+            bbox=bbox_coords,
+            z=z,
+            eps_m=eps_m,
+            min_samples=min_samples,
+            jf_min=jf_min,
+            incident_radius_m=incident_radius_m,
+            include_geocode=include_geocode,
+        )
+        return result
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to compute live chokepoints: {exc}")
