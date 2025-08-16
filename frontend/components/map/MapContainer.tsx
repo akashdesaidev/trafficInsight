@@ -1,409 +1,119 @@
+// components/MapContainer.tsx
 "use client";
 
 import { useEffect, useRef, useState } from "react";
 import { useMapStore } from "@/store/mapStore";
-import type { TomTomMap } from "@/types/tomtom";
-import TrafficLayer from "@/components/map/TrafficLayer";
+
+// Import custom hooks
+import { useTomTomMap } from "@/hooks/useTomTomMap";
+import { useMapInteractions } from "@/hooks/useMapInteractions";
+import { useUserLocation } from "@/hooks/useUserLocation";
+
+// Import child components
 import SimpleTrafficOverlay from "@/components/map/SimpleTrafficOverlay";
-import TrafficTestComponent from "@/components/map/TrafficTestComponent";
 import IncidentMarkers from "@/components/map/IncidentMarkers";
 import IncidentPopup from "@/components/map/IncidentPopup";
-import RouteDrawer from "@/components/map/RouteDrawer";
 import LocationSearch from "@/components/search/LocationSearch";
 import { RouteDirections } from "@/components/route/RouteDirections";
+
 import "@tomtom-international/web-sdk-maps/dist/maps.css";
 
-type TomTomModule = {
-  default: {
-    map: (options: {
-      key: string;
-      container: HTMLElement;
-      center: [number, number];
-      zoom: number;
-    }) => TomTomMap;
-    NavigationControl?: new () => unknown;
-  };
-};
-
-// using TomTomMap from types/tomtom
-
-interface MapContainerProps {
-  onAreaSelect?: (
-    bbox: [number, number, number, number],
-    name?: string
-  ) => void;
-}
-
-export default function MapContainer({ onAreaSelect }: MapContainerProps) {
+export default function MapContainer() {
   const mapElementRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<TomTomMap | null>(null);
-  const [map, setMap] = useState<TomTomMap | null>(null);
-  const [initError, setInitError] = useState<string | null>(null);
-  // Use global state for traffic and incidents
-  const trafficLayer = useMapStore((s) => s.trafficLayer);
-  const incidentLayer = useMapStore((s) => s.incidentLayer);
-  const mapSettings = useMapStore((s) => s.mapSettings);
-  const sidebarCollapsed = useMapStore((s) => s.sidebarCollapsed);
-  const selectedLocation = useMapStore((s) => s.selectedLocation);
-  const setTrafficVisible = useMapStore((s) => s.setTrafficVisible);
-  const setIncidentsVisible = useMapStore((s) => s.setIncidentsVisible);
-  const [routeDrawingEnabled, setRouteDrawingEnabled] = useState(false);
-  const [isLocating, setIsLocating] = useState(false);
-  const [userLocation, setUserLocation] = useState<[number, number] | null>(
-    null
-  );
+
+  // Global state from Zustand store
+  const { trafficLayer, incidentLayer, sidebarCollapsed } = useMapStore();
+
+  // State for routing
   const [routeDestination, setRouteDestination] = useState<{
     lat: number;
     lon: number;
     name: string;
   } | null>(null);
 
-  const setCenter = useMapStore((s) => s.setCenter);
-  const setZoom = useMapStore((s) => s.setZoom);
+  // Custom hooks for map logic
+  const { map, isMapReady, initError } = useTomTomMap(mapElementRef);
+  const { addLocationMarker } = useMapInteractions(map, isMapReady);
+  const { userLocation, isLocating, requestUserLocation } = useUserLocation(
+    map,
+    addLocationMarker
+  );
 
-  const addLocationMarker = (coordinates: [number, number], type: 'user' | 'search' = 'user') => {
-    if (!map) return;
-
-    try {
-      const sourceId = type === 'user' ? 'user-location' : 'search-location';
-      const accuracyLayerId = type === 'user' ? 'user-location-accuracy-layer' : 'search-location-accuracy-layer';
-      const dotLayerId = type === 'user' ? 'user-location-layer' : 'search-location-layer';
-      
-      // Remove existing marker if present
-      if (map.getSource && map.getSource(sourceId)) {
-        try {
-          map.removeLayer(dotLayerId);
-          map.removeLayer(accuracyLayerId);
-        } catch {}
-        map.removeSource(sourceId);
-      }
-
-      // Add location source
-      map.addSource(sourceId, {
-        type: "geojson",
-        data: {
-          type: "Feature",
-          geometry: {
-            type: "Point",
-            coordinates: coordinates,
-          },
-          properties: {},
-        },
-      });
-
-      // Different colors for different marker types
-      const colors = {
-        user: { primary: "#4285F4", secondary: "#4285F4" }, // Blue for user location
-        search: { primary: "#E53935", secondary: "#E53935" } // Red for search results
-      };
-
-      // Add accuracy circle layer
-      map.addLayer({
-        id: accuracyLayerId,
-        type: "circle",
-        source: sourceId,
-        paint: {
-          "circle-radius": type === 'user' ? 20 : 15,
-          "circle-color": colors[type].secondary,
-          "circle-opacity": 0.2,
-          "circle-stroke-width": 1,
-          "circle-stroke-color": colors[type].secondary,
-          "circle-stroke-opacity": 0.4,
-        },
-      });
-
-      // Add location dot layer
-      map.addLayer({
-        id: dotLayerId,
-        type: "circle",
-        source: sourceId,
-        paint: {
-          "circle-radius": type === 'user' ? 8 : 10,
-          "circle-color": colors[type].primary,
-          "circle-stroke-width": 2,
-          "circle-stroke-color": "#FFFFFF",
-        },
-      });
-    } catch (error) {
-      console.error(`Error adding ${type} location marker:`, error);
+  // Effect to resize map when sidebar toggles
+  useEffect(() => {
+    if (isMapReady && map) {
+      // Delay resize to allow for CSS transition of the sidebar
+      const timer = setTimeout(() => map.resize(), 300);
+      return () => clearTimeout(timer);
     }
+  }, [isMapReady, map, sidebarCollapsed]);
+
+  const getMapBounds = () => {
+    if (!map?.getBounds) return null;
+    const b = map.getBounds();
+    const sw = b.getSouthWest();
+    const ne = b.getNorthEast();
+    return `${sw.lng},${sw.lat},${ne.lng},${ne.lat}`;
   };
-
-  const getCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      alert("Geolocation is not supported by this browser.");
-      return;
-    }
-
-    setIsLocating(true);
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-
-        if (map && map.setCenter && map.setZoom) {
-          // Center map on user's location
-          map.setCenter([longitude, latitude]);
-          map.setZoom(16); // Zoom in for better view
-
-          // Update store
-          setCenter([longitude, latitude]);
-          setZoom(16);
-
-          // Set user location for marker
-          setUserLocation([longitude, latitude]);
-
-          // Add location marker
-          addLocationMarker([longitude, latitude], 'user');
-        }
-
-        setIsLocating(false);
-      },
-      (error) => {
-        let errorMessage = "Unable to retrieve your location.";
-        switch (error.code) {
-          case error.PERMISSION_DENIED:
-            errorMessage = "Location access denied by user.";
-            break;
-          case error.POSITION_UNAVAILABLE:
-            errorMessage = "Location information is unavailable.";
-            break;
-          case error.TIMEOUT:
-            errorMessage = "Location request timed out.";
-            break;
-        }
-        alert(errorMessage);
-        setIsLocating(false);
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 300000, // Cache for 5 minutes
-      }
-    );
-  };
-
-  useEffect(() => {
-    let isMounted = true;
-    if (!mapElementRef.current || mapRef.current) return;
-
-    // Add a small delay to ensure container is properly rendered
-    setTimeout(() => {
-      if (!isMounted || !mapElementRef.current) return;
-
-      const apiKey = process.env.NEXT_PUBLIC_TOMTOM_API_KEY;
-      console.log(
-        "TomTom API Key available:",
-        !!apiKey,
-        "Length:",
-        apiKey?.length
-      );
-      if (!apiKey) {
-        setInitError("Missing NEXT_PUBLIC_TOMTOM_API_KEY");
-        return;
-      }
-
-      // Dynamically import to avoid SSR/global scope issues
-      import("@tomtom-international/web-sdk-maps")
-        .then((module) => {
-          const tt = module as unknown as TomTomModule;
-          if (!isMounted || !mapElementRef.current) return;
-          console.log(
-            "Initializing TomTom map with key:",
-            apiKey.substring(0, 4) + "..." + apiKey.substring(apiKey.length - 4)
-          );
-          console.log("Map container element:", mapElementRef.current);
-          const containerDimensions = {
-            width: mapElementRef.current?.offsetWidth,
-            height: mapElementRef.current?.offsetHeight,
-            clientWidth: mapElementRef.current?.clientWidth,
-            clientHeight: mapElementRef.current?.clientHeight,
-          };
-          console.log("Container dimensions:", containerDimensions);
-
-          // Check if container has zero dimensions
-          if (!containerDimensions.height || containerDimensions.height === 0) {
-            console.error(
-              "Map container has zero height! This will prevent the map from rendering."
-            );
-            setInitError("Map container has no height. Check CSS layout.");
-            return;
-          }
-          const map = tt.default.map({
-            key: apiKey,
-            container: mapElementRef.current,
-            center: [77.5946, 12.9716],
-            zoom: 10,
-          });
-          console.log("TomTom map created successfully:", !!map);
-
-          // Wait for map to be ready
-          map.on("load", () => {
-            console.log("TomTom map loaded and ready");
-            // Force a resize to ensure proper rendering
-            setTimeout(() => {
-              map.resize();
-              console.log("Map resized");
-            }, 100);
-          });
-
-          map.on("error", (error) => {
-            console.error("TomTom map error:", error);
-          });
-
-          // Add basic navigation controls if available
-          if (tt?.default?.NavigationControl) {
-            map.addControl(new tt.default.NavigationControl());
-            console.log("Navigation controls added");
-          }
-
-          mapRef.current = map;
-          setMap(map); // Also set the state so components re-render
-
-          console.log("Map setup complete");
-
-          const onResize = () => map.resize();
-          const onMoveEnd = () => {
-            const center = map?.getCenter?.();
-            const zoom = map?.getZoom?.();
-            if (center && typeof zoom === "number") {
-              setCenter([center.lng, center.lat]);
-              setZoom(zoom);
-            }
-          };
-          window.addEventListener("resize", onResize);
-          // @ts-expect-error tomtom types are not available
-          map.on("moveend", onMoveEnd);
-
-          return () => {
-            window.removeEventListener("resize", onResize);
-            if (map.off) {
-              map.off("moveend", onMoveEnd as unknown as () => void);
-            }
-            map.remove();
-            mapRef.current = null;
-            setMap(null); // Also clear the state
-          };
-        })
-        .catch((err) => {
-          if (isMounted) setInitError((err as Error).message);
-        });
-    }, 100); // 100ms delay
-
-    return () => {
-      isMounted = false;
-    };
-  }, [setCenter, setZoom]);
-
-  // Handle sidebar toggle - resize map when sidebar collapses/expands
-  useEffect(() => {
-    if (map && map.resize) {
-      // Small delay to ensure layout has updated
-      setTimeout(() => {
-        map.resize();
-        console.log("Map resized due to sidebar toggle:", sidebarCollapsed);
-      }, 300);
-    }
-  }, [map, sidebarCollapsed]);
-
-  // Handle selected location from search - place marker and center map
-  useEffect(() => {
-    if (map && selectedLocation) {
-      // Center map on selected location
-      if (map.setCenter && map.setZoom) {
-        map.setCenter([selectedLocation.lon, selectedLocation.lat]);
-        map.setZoom(16); // Zoom in for better view
-      }
-
-      // Add search result marker
-      addLocationMarker([selectedLocation.lon, selectedLocation.lat], 'search');
-      
-      console.log("Placed marker for search result:", selectedLocation.name);
-    }
-  }, [map, selectedLocation]);
 
   return (
     <div className="h-full w-full relative min-h-[400px]">
-      {!process.env.NEXT_PUBLIC_TOMTOM_API_KEY ? (
-        <div className="absolute inset-0 flex items-center justify-center text-sm text-red-600">
-          Set NEXT_PUBLIC_TOMTOM_API_KEY to load the map
-        </div>
-      ) : null}
-      {initError ? (
-        <div className="absolute inset-0 flex items-center justify-center text-sm text-red-600">
-          {initError}
-        </div>
-      ) : null}
-      <div
-        ref={mapElementRef}
-        className="h-full w-full bg-gray-100 min-h-[400px]"
-        style={{ minHeight: "400px", height: "100%", width: "100%" }}
-      />
+      <div ref={mapElementRef} className="h-full w-full bg-gray-100" />
 
-      {/* Overlays */}
-      {/* <TrafficLayer visible={showTraffic} map={map} /> */}
-      <SimpleTrafficOverlay visible={trafficLayer.visible} map={map} />
-      <IncidentMarkers
-        visible={incidentLayer.visible}
-        map={map}
-        bboxProvider={() => {
-          const m = map;
-          if (!m?.getBounds) return null;
-          const b = m.getBounds();
-          const sw = b.getSouthWest();
-          const ne = b.getNorthEast();
-          return `${sw.lng},${sw.lat},${ne.lng},${ne.lat}`;
-        }}
-      />
-      <IncidentPopup map={map} />
-      <RouteDrawer
-        map={map}
-        enabled={routeDrawingEnabled}
-        onRouteChange={() => {
-          // Handle route changes if needed
-        }}
-      />
+      {initError && (
+        <div className="absolute inset-0 flex items-center justify-center text-sm text-red-600 bg-white/70">
+          Error: {initError}
+        </div>
+      )}
 
-      {/* Search Box */}
-      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-20 w-full max-w-md px-4 sm:px-6 lg:px-4">
-        <LocationSearch 
-          onRouteRequest={(destination) => setRouteDestination(destination)}
-        />
+      {/* Map Overlays and Components */}
+      {isMapReady && map && (
+        <>
+          <SimpleTrafficOverlay visible={trafficLayer.visible} map={map} />
+          <IncidentMarkers
+            visible={incidentLayer.visible}
+            map={map}
+            bboxProvider={getMapBounds}
+          />
+          <IncidentPopup map={map} />
+        </>
+      )}
+
+      {/* UI Controls */}
+      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-20 w-full max-w-md px-4">
+        <LocationSearch onRouteRequest={setRouteDestination} />
       </div>
 
-      {/* Old controls panel removed - now using sidebar */}
-
-      {/* Current Location Button - Bottom Right (Google Maps style) */}
       <button
         className={`absolute bottom-6 right-6 z-10 w-12 h-12 rounded-full shadow-lg transition-all duration-200 flex items-center justify-center ${
           isLocating
             ? "bg-gray-400 cursor-not-allowed"
-            : "bg-white hover:bg-gray-50 active:bg-gray-100 hover:shadow-xl"
+            : "bg-white hover:bg-gray-100"
         }`}
-        onClick={getCurrentLocation}
+        onClick={requestUserLocation}
         disabled={isLocating}
         title="Show your location"
       >
         {isLocating ? (
-          <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+          <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full" />
         ) : (
-          <div className="w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow-sm"></div>
+          <div className="w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow-sm" />
         )}
       </button>
 
-      {/* Route Directions Panel */}
       {routeDestination && (
-        <div className="absolute top-16 left-2 right-2 sm:left-4 sm:right-auto sm:w-96 z-15 max-h-[calc(100vh-120px)] overflow-auto">
+        <div className="absolute top-20 left-4 z-10 sm:w-96 max-h-[calc(100vh-120px)] overflow-auto">
           <RouteDirections
             destination={routeDestination}
             onClose={() => setRouteDestination(null)}
-            userLocation={userLocation ? { lat: userLocation[1], lon: userLocation[0] } : null}
+            userLocation={
+              userLocation
+                ? { lat: userLocation[1], lon: userLocation[0] }
+                : null
+            }
           />
         </div>
       )}
-
-      {/* Debug Component - Remove this after testing */}
-      {/* <TrafficTestComponent visible={showTraffic} /> */}
     </div>
   );
 }

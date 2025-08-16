@@ -70,7 +70,7 @@ export const useMapStore = create<MapState>((set) => ({
 
   // Default traffic layer settings
   trafficLayer: {
-    visible: true,
+    visible: false,
     opacity: 80,
     style: "relative",
     thickness: 4,
@@ -79,7 +79,7 @@ export const useMapStore = create<MapState>((set) => ({
 
   // Default incident layer settings
   incidentLayer: {
-    visible: true,
+    visible: false,
     severityFilter: ["low", "medium", "high", "critical"],
     timeFilter: "current",
   },
@@ -87,7 +87,7 @@ export const useMapStore = create<MapState>((set) => ({
   // Default map settings
   mapSettings: {
     autoRefresh: false,
-    refreshInterval: 60, // 60 seconds
+    refreshInterval: 600, // 10 minutes
     showDebugInfo: false,
   },
 

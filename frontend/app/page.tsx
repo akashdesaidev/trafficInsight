@@ -48,7 +48,7 @@ export default function Home() {
           sidebarCollapsed ? "w-full" : ""
         }`}
       >
-        <MapContainer onAreaSelect={handleAreaSelect} />
+        <MapContainer />
 
         {/* Mobile Analytics Button */}
         <div className="md:hidden absolute top-4 right-4 z-40">
