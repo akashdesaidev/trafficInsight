@@ -37,15 +37,8 @@ async def get_road_info(
         
         logger.info(f"Successfully fetched OSM data: {road_data.get('road_found', False)}")
         
-        return {
-            "success": True,
-            "coordinates": {
-                "lat": lat,
-                "lon": lon,
-                "radius": radius
-            },
-            "data": road_data
-        }
+        # Return the structure expected by frontend
+        return road_data
         
     except HTTPException:
         # Re-raise HTTP exceptions from the service

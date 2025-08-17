@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 class IncidentGeometry(BaseModel):
     type: str = "Point"
-    coordinates: List[float] = Field(default_factory=list)
+    coordinates: List[float] = Field(min_items=2, max_items=2, description="[longitude, latitude]")
 
 
 class Incident(BaseModel):
@@ -27,8 +27,13 @@ class LiveTrafficResponse(BaseModel):
     ttlSeconds: int = 120
 
 
+class Coordinate(BaseModel):
+    latitude: float
+    longitude: float
+
+
 class TrafficFlowPoint(BaseModel):
-    coordinates: List[float] = Field(default_factory=list)
+    coordinate: Coordinate
     currentSpeed: Optional[float] = None
     freeFlowSpeed: Optional[float] = None
     currentTravelTime: Optional[int] = None
@@ -40,6 +45,25 @@ class TrafficFlowPoint(BaseModel):
 class TrafficFlowResponse(BaseModel):
     flowSegmentData: List[TrafficFlowPoint] = Field(default_factory=list)
     version: str = "1.0"
+
+
+class FlowSegmentCoordinates(BaseModel):
+    coordinate: List[Coordinate] = Field(default_factory=list)
+
+
+class FlowSegmentData(BaseModel):
+    frc: str
+    currentSpeed: float
+    freeFlowSpeed: float
+    currentTravelTime: int
+    freeFlowTravelTime: int
+    confidence: float
+    roadClosure: bool
+    coordinates: FlowSegmentCoordinates
+
+
+class FlowSegmentResponse(BaseModel):
+    flowSegmentData: FlowSegmentData
 
 
 class TrafficHistoricalData(BaseModel):

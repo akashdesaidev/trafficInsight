@@ -2,13 +2,15 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 import httpx
+import logging
 
 from app.core.config import get_settings
-from app.models.traffic import IncidentsResponse, Incident, LiveTrafficResponse, TrafficFlowResponse, TrafficFlowPoint
+from app.models.traffic import IncidentsResponse, Incident, IncidentGeometry, LiveTrafficResponse, TrafficFlowResponse, TrafficFlowPoint, FlowSegmentResponse, FlowSegmentData, FlowSegmentCoordinates, Coordinate
 from app.services.cache import get_cache
 from app.services.live_chokepoints import LiveChokepointService
 
 router = APIRouter(prefix="/traffic", tags=["traffic"])
+logger = logging.getLogger(__name__)
 
 # Default Bangalore bounding box (minLon, minLat, maxLon, maxLat)
 BANGALORE_BBOX = [77.6234, 12.9037, 77.6625, 12.9247]
@@ -89,7 +91,7 @@ async def get_traffic_flow_data(
         confidence = 0.7 + random.random() * 0.3  # 70-100% confidence
         
         flow_points.append(TrafficFlowPoint(
-            coordinates=[lon, lat],
+            coordinate=Coordinate(latitude=lat, longitude=lon),
             currentSpeed=round(current_speed, 1),
             freeFlowSpeed=round(free_flow_speed, 1),
             currentTravelTime=current_time,
@@ -133,7 +135,22 @@ async def get_traffic_incidents(
             incidents_list = []
             for item in incidents_data or []:
                 props = item.get("properties", {})
-                geometry = item.get("geometry", {})
+                geometry_raw = item.get("geometry", {})
+                
+                # Process geometry consistently
+                geometry = None
+                if geometry_raw:
+                    coords = geometry_raw.get("coordinates", [])
+                    if coords and len(coords) >= 2:
+                        try:
+                            if isinstance(coords[0], (int, float)) and isinstance(coords[1], (int, float)):
+                                geometry = IncidentGeometry(
+                                    type="Point",
+                                    coordinates=[float(coords[0]), float(coords[1])]
+                                )
+                        except (ValueError, TypeError, IndexError) as e:
+                            logger.warning(f"Error parsing geometry for large area incident {props.get('id', 'unknown')}: {e}")
+                
                 incidents_list.append(
                     Incident(
                         id=str(props.get("id", "")),
@@ -142,8 +159,8 @@ async def get_traffic_incidents(
                         description=props.get("description"),
                         startTime=props.get("startTime"),
                         endTime=props.get("endTime"),
-                        geometry=geometry if geometry else None,
-                    ).model_dump()
+                        geometry=geometry,
+                    )
                 )
             return IncidentsResponse(incidents=incidents_list)
         except Exception as exc:
@@ -192,28 +209,40 @@ async def get_traffic_incidents(
         if geometry_raw:
             coords = geometry_raw.get("coordinates", [])
             geom_type = geometry_raw.get("type", "Point")
+            incident_id = props.get("id", "unknown")
             
-            # For LineString, keep the full coordinate array; for Point, use as-is
-            if geom_type == "Point" and coords and len(coords) >= 2:
-                # Point: [lon, lat]
-                try:
-                    geometry = {
-                        "type": geom_type,
-                        "coordinates": [float(coords[0]), float(coords[1])]
-                    }
-                except (ValueError, TypeError, IndexError):
-                    geometry = None
-            elif geom_type == "LineString" and coords:
-                # LineString: [[lon, lat], [lon, lat], ...] -> use first point for our model
-                try:
-                    first_coord = coords[0] if coords and isinstance(coords[0], list) else coords
-                    if first_coord and len(first_coord) >= 2:
-                        geometry = {
-                            "type": geom_type,
-                            "coordinates": [float(first_coord[0]), float(first_coord[1])]
-                        }
-                except (ValueError, TypeError, IndexError):
-                    geometry = None
+            try:
+                # For LineString, keep the full coordinate array; for Point, use as-is
+                if geom_type == "Point" and coords and len(coords) >= 2:
+                    # Point: [lon, lat]
+                    if isinstance(coords[0], (int, float)) and isinstance(coords[1], (int, float)):
+                        geometry = IncidentGeometry(
+                            type=geom_type,
+                            coordinates=[float(coords[0]), float(coords[1])]
+                        )
+                    else:
+                        logger.warning(f"Invalid Point coordinates for incident {incident_id}: {coords}")
+                elif geom_type == "LineString" and coords:
+                    # LineString: [[lon, lat], [lon, lat], ...] -> use first point for our model
+                    if isinstance(coords, list) and len(coords) > 0:
+                        first_coord = coords[0] if isinstance(coords[0], list) else coords
+                        if isinstance(first_coord, list) and len(first_coord) >= 2:
+                            if isinstance(first_coord[0], (int, float)) and isinstance(first_coord[1], (int, float)):
+                                geometry = IncidentGeometry(
+                                    type="Point",  # Convert to Point for consistency
+                                    coordinates=[float(first_coord[0]), float(first_coord[1])]
+                                )
+                            else:
+                                logger.warning(f"Invalid LineString coordinate values for incident {incident_id}: {first_coord}")
+                        else:
+                            logger.warning(f"Invalid LineString coordinate structure for incident {incident_id}: {first_coord}")
+                    else:
+                        logger.warning(f"Invalid LineString coordinates for incident {incident_id}: {coords}")
+                else:
+                    logger.warning(f"Unsupported geometry type '{geom_type}' for incident {incident_id}")
+            except (ValueError, TypeError, IndexError) as e:
+                logger.error(f"Error parsing geometry for incident {incident_id}: {e}")
+                geometry = None
         
         # Extract description from events array (first event's description)
         description = None
@@ -239,7 +268,7 @@ async def get_traffic_incidents(
                 startTime=props.get("startTime"),
                 endTime=props.get("endTime"),
                 geometry=geometry,
-            ).model_dump()
+            )
         )
 
     result = IncidentsResponse(incidents=incidents_list)
@@ -342,31 +371,67 @@ async def vector_probe(
 
 
 
-@router.get("/flow-segment")
+@router.get("/flow-segment", response_model=FlowSegmentResponse)
 async def flow_segment(
     lat: float = Query(...),
     lon: float = Query(...),
     style: str = Query("absolute", pattern="^(absolute|relative)$"),
     resolution: int = Query(10, ge=1, le=100),
     unit: str = Query("KMPH", pattern="^(KMPH|MPH)$"),
-):
-    """Proxy TomTom Flow Segment Data (JSON) for a single point.
+) -> FlowSegmentResponse:
+    """Get TomTom Flow Segment Data (structured) for a single point.
     Example: /api/traffic/flow-segment?lat=12.97&lon=77.59&style=absolute&resolution=10&unit=KMPH
     """
     settings = get_settings()
     api_key = settings.clean_tomtom_traffic_api_key or settings.clean_tomtom_maps_api_key
     if not api_key:
         raise HTTPException(status_code=500, detail="TomTom API key not configured")
+    
     upstream = f"https://api.tomtom.com/traffic/services/4/flowSegmentData/{style}/{resolution}/json"
     params = {"key": api_key, "point": f"{lat},{lon}", "unit": unit}
+    
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.get(upstream, params=params)
             if resp.status_code != 200:
                 raise HTTPException(status_code=resp.status_code, detail=resp.text)
-            return Response(content=resp.content, media_type="application/json")
+            
+            # Parse TomTom response
+            tomtom_data = resp.json()
+            
+            # Extract flow segment data from TomTom response
+            if "flowSegmentData" not in tomtom_data:
+                raise HTTPException(status_code=502, detail="Invalid TomTom response structure")
+            
+            flow_data = tomtom_data["flowSegmentData"]
+            
+            # Parse coordinates
+            coordinates = []
+            if "coordinates" in flow_data and "coordinate" in flow_data["coordinates"]:
+                for coord in flow_data["coordinates"]["coordinate"]:
+                    coordinates.append(Coordinate(
+                        latitude=coord.get("latitude", 0.0),
+                        longitude=coord.get("longitude", 0.0)
+                    ))
+            
+            # Create structured response
+            structured_data = FlowSegmentData(
+                frc=flow_data.get("frc", "FRC0"),
+                currentSpeed=flow_data.get("currentSpeed", 0.0),
+                freeFlowSpeed=flow_data.get("freeFlowSpeed", 0.0),
+                currentTravelTime=flow_data.get("currentTravelTime", 0),
+                freeFlowTravelTime=flow_data.get("freeFlowTravelTime", 0),
+                confidence=flow_data.get("confidence", 0.0),
+                roadClosure=flow_data.get("roadClosure", False),
+                coordinates=FlowSegmentCoordinates(coordinate=coordinates)
+            )
+            
+            return FlowSegmentResponse(flowSegmentData=structured_data)
+            
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Error processing flow segment data: {str(exc)}")
 
 
 @router.get("/tiles/{z}/{x}/{y}.png")
