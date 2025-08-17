@@ -43,7 +43,8 @@ export default function LiveLeaderboard({ selectedArea }: Props) {
     
     try {
       // Backend now defaults to Bangalore; no bbox required
-      const url = `/api/traffic/live-chokepoints?z=14&eps_m=400&min_samples=3&jf_min=2&include_geocode=true`;
+      // Use same parameters as LiveChokepointsMarkers for consistency
+      const url = `/api/traffic/live-chokepoints?z=14&eps_m=300&min_samples=5&jf_min=4.0&include_geocode=true`;
       const res = await fetch(url, { 
         signal: controller.signal,
         headers: { 'Content-Type': 'application/json' }

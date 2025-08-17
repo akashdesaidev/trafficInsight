@@ -9,6 +9,13 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  experimental: {
+    proxyTimeout: 120000, // 2 minutes timeout for proxy requests
+  },
+  serverRuntimeConfig: {
+    // Server-side timeout configurations
+    timeout: 120000, // 2 minutes
+  },
 };
 
 export default nextConfig;

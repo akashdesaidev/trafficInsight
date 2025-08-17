@@ -9,6 +9,7 @@ import TrafficTestComponent from "@/components/map/TrafficTestComponent";
 import IncidentMarkers from "@/components/map/IncidentMarkers";
 import IncidentPopup from "@/components/map/IncidentPopup";
 import RouteDrawer from "@/components/map/RouteDrawer";
+import LiveChokepointsMarkers from "@/components/map/LiveChokepointsMarkers";
 import LocationSearch from "@/components/search/LocationSearch";
 import "@tomtom-international/web-sdk-maps/dist/maps.css";
 
@@ -41,6 +42,7 @@ export default function MapContainer({ onAreaSelect }: MapContainerProps) {
   // Use global state for traffic and incidents
   const trafficLayer = useMapStore((s) => s.trafficLayer);
   const incidentLayer = useMapStore((s) => s.incidentLayer);
+  const liveChokepointsLayer = useMapStore((s) => s.liveChokepointsLayer);
   const mapSettings = useMapStore((s) => s.mapSettings);
   const sidebarCollapsed = useMapStore((s) => s.sidebarCollapsed);
   const setTrafficVisible = useMapStore((s) => s.setTrafficVisible);
@@ -338,6 +340,10 @@ export default function MapContainer({ onAreaSelect }: MapContainerProps) {
           const ne = b.getNorthEast();
           return `${sw.lng},${sw.lat},${ne.lng},${ne.lat}`;
         }}
+      />
+      <LiveChokepointsMarkers
+        visible={liveChokepointsLayer.visible}
+        map={map}
       />
       <IncidentPopup map={map} />
       <RouteDrawer

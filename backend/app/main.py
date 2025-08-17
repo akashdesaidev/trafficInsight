@@ -44,6 +44,10 @@ def get_uvicorn_config():
         "log_level": "info",
         "factory": False,
         "app": "app.main:app",
+        "timeout_keep_alive": 120,  # Keep alive timeout in seconds
+        "timeout_graceful_shutdown": 30,  # Graceful shutdown timeout
+        "limit_max_requests": 1000,  # Max requests before worker restart
+        "limit_concurrency": 100,  # Max concurrent connections
     }
 
 if __name__ == "__main__":

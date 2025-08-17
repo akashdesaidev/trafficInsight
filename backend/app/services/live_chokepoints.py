@@ -59,6 +59,31 @@ class LiveChokepointService:
         Compute live chokepoints using vector flow tiles (jamFactor) and DBSCAN.
         Returns clusters suitable for a leaderboard UI.
         """
+        # Add timeout wrapper to prevent socket hang up errors
+        try:
+            return await asyncio.wait_for(
+                self._compute_live_chokepoints(
+                    bbox, z, eps_m, min_samples, jf_min, incident_radius_m, include_geocode
+                ),
+                timeout=90.0  # 90 seconds timeout for heavy operations
+            )
+        except asyncio.TimeoutError:
+            self.logger.error("Live chokepoints computation timed out after 90 seconds")
+            raise RuntimeError("Live chokepoints computation timed out")
+
+    async def _compute_live_chokepoints(
+        self,
+        bbox: List[float],
+        z: int = 13,
+        eps_m: int = 150,
+        min_samples: int = 4,
+        jf_min: float = 4.0,
+        incident_radius_m: int = 100,
+        include_geocode: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Internal method to compute live chokepoints.
+        """
 
         # Basic parameter checks
         if np is None or DBSCAN is None:
@@ -106,35 +131,34 @@ class LiveChokepointService:
             self.logger.info("sample props keys: %s", keys)
         self.logger.info("decoded features: %s", len(features))
 
-        # Step 3: build severity samples from jamFactor
+        # Step 3: build severity samples from jamFactor (strict filtering for moderate/severe only)
         samples = self._build_samples_from_features(features, jf_min=jf_min)
-        # If no samples and jf_min is high, relax threshold and retry once
-        if not samples and jf_min > 2.0:
-            self.logger.info("no samples at jf_min=%.2f, retrying with jf_min=2.0", jf_min)
-            samples = self._build_samples_from_features(features, jf_min=2.0)
-        # If still none, relax further to 0.5
-        if not samples:
-            self.logger.info("no samples after relax, retrying with jf_min=0.5")
-            samples = self._build_samples_from_features(features, jf_min=0.5)
-        # If still no samples, try higher zoom levels for more detailed segments
-        if not samples and z < 14:
-            for z_alt in [13, 14]:
-                if z_alt <= z:
-                    continue
-                alt_tiles = self._tiles_for_bbox(min_lon, min_lat, max_lon, max_lat, z_alt)
-                if len(alt_tiles) > 32:
-                    continue
-                alt_features, alt_style = await self._fetch_decode_tiles_multi(alt_tiles, z_alt)
-                samples = self._build_samples_from_features(alt_features, jf_min=max(2.0, jf_min))
-                self.logger.info("alt zoom %s: tiles=%s features=%s samples=%s", z_alt, len(alt_tiles), len(alt_features), len(samples))
-                if samples:
-                    break
-        # Final fallback: probe Flow Segment Data API across a grid
-        if not samples:
-            self.logger.info("no samples after tiles; probing flowSegmentData grid fallback")
-            grid_samples = await self._collect_flow_segment_samples(bbox=[min_lon, min_lat, max_lon, max_lat], max_points=80)
-            self.logger.info("flowSegmentData samples: %s", len(grid_samples))
-            samples = grid_samples
+        self.logger.info("samples with jf_min=%.2f: %s", jf_min, len(samples))
+        
+        # For moderate/severe filtering (jf_min >= 4.0), don't use fallbacks
+        # Only use fallbacks for lower thresholds to maintain backward compatibility
+        if not samples and jf_min < 4.0:
+            # If no samples and jf_min is low, try higher zoom levels for more detailed segments
+            if z < 14:
+                for z_alt in [13, 14]:
+                    if z_alt <= z:
+                        continue
+                    alt_tiles = self._tiles_for_bbox(min_lon, min_lat, max_lon, max_lat, z_alt)
+                    if len(alt_tiles) > 32:
+                        continue
+                    alt_features, alt_style = await self._fetch_decode_tiles_multi(alt_tiles, z_alt)
+                    samples = self._build_samples_from_features(alt_features, jf_min=jf_min)
+                    self.logger.info("alt zoom %s: tiles=%s features=%s samples=%s", z_alt, len(alt_tiles), len(alt_features), len(samples))
+                    if samples:
+                        break
+            # Final fallback: probe Flow Segment Data API across a grid (only for low thresholds)
+            if not samples:
+                self.logger.info("no samples after tiles; probing flowSegmentData grid fallback")
+                grid_samples = await self._collect_flow_segment_samples(bbox=[min_lon, min_lat, max_lon, max_lat], max_points=80)
+                # Apply the same jf_min filtering to grid samples
+                filtered_grid_samples = [s for s in grid_samples if s.severity * 10.0 >= jf_min]
+                self.logger.info("flowSegmentData samples: %s (filtered: %s)", len(grid_samples), len(filtered_grid_samples))
+                samples = filtered_grid_samples
         self.logger.info("samples total: %s", len(samples))
 
         # Step 4: fetch incidents and boost nearby samples
@@ -209,7 +233,7 @@ class LiveChokepointService:
             params = {"key": api_key}
             async with sem:
                 try:
-                    async with httpx.AsyncClient(timeout=8.0) as client:
+                    async with httpx.AsyncClient(timeout=60.0) as client:
                         resp = await client.get(url, params=params)
                         if resp.status_code != 200:
                             self.logger.debug("tile fetch failed z=%s x=%s y=%s status=%s", z, x, y, resp.status_code)
@@ -277,7 +301,7 @@ class LiveChokepointService:
             params = {"key": api_key}
             async with sem:
                 try:
-                    async with httpx.AsyncClient(timeout=10.0) as client:
+                    async with httpx.AsyncClient(timeout=60.0) as client:
                         print(" ")
                         print(" url: ", url)
                         print(" ")
@@ -337,7 +361,7 @@ class LiveChokepointService:
             params = {"key": api_key, "point": f"{lat},{lon}", "unit": "KMPH"}
             async with sem:
                 try:
-                    async with httpx.AsyncClient(timeout=6.0) as client:
+                    async with httpx.AsyncClient(timeout=60.0) as client:
                         resp = await client.get(url, params=params)
                         if resp.status_code != 200:
                             return None
@@ -535,11 +559,11 @@ class LiveChokepointService:
             "bbox": bbox_str,
             "language": "en-GB",
             "timeValidityFilter": "present",
-            "fields": "{incidents{type,severity,geometry{type,coordinates},properties{id,roadClosed,magnitudeOfDelay}}}",
+            "fields": "{incidents{type,severity,geometry{type,coordinates},properties{id,description,roadClosed,magnitudeOfDelay}}}",
         }
         
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=60.0) as client:
                 resp = await client.get("https://api.tomtom.com/traffic/services/5/incidentDetails", params=params)
                 if resp.status_code != 200:
                     self.logger.warning(f"Incident API failed for bbox {bbox_str}: {resp.status_code}")
@@ -702,7 +726,7 @@ class LiveChokepointService:
         url = f"https://api.tomtom.com/search/2/reverseGeocode/{lat},{lon}.json"
         params = {"key": api_key, "radius": 50}
         try:
-            async with httpx.AsyncClient(timeout=6.0) as client:
+            async with httpx.AsyncClient(timeout=60.0) as client:
                 resp = await client.get(url, params=params)
                 if resp.status_code != 200:
                     return None

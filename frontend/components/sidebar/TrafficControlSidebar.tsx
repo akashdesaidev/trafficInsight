@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Slider } from "@/components/ui/slider";
+
 import {
   Select,
   SelectContent,
@@ -27,7 +27,7 @@ import {
   Download,
   Settings,
   Layers,
-  Filter,
+
   RefreshCw,
   ChevronDown,
   ChevronRight,
@@ -63,6 +63,7 @@ export function TrafficControlSidebar({
   const {
     trafficLayer,
     incidentLayer,
+    liveChokepointsLayer,
     mapSettings,
     sidebarCollapsed,
     setTrafficVisible,
@@ -72,6 +73,9 @@ export function TrafficControlSidebar({
     setIncidentsVisible,
     setIncidentSeverityFilter,
     setIncidentTimeFilter,
+    setLiveChokepointsVisible,
+    setLiveChokepointsRefreshInterval,
+    setLiveChokepointsShowLabels,
     setAutoRefresh,
     setRefreshInterval,
     setShowDebugInfo,
@@ -390,6 +394,96 @@ export function TrafficControlSidebar({
             </CollapsibleContent>
           </Collapsible>
 
+          {/* Live Chokepoints Layer */}
+          <Collapsible defaultOpen>
+            <CollapsibleTrigger asChild>
+              <Button
+                variant="ghost"
+                className="w-full justify-between p-3 h-auto"
+              >
+                <div className="flex items-center gap-2">
+                  <MapPin className="h-4 w-4" />
+                  <span className="font-medium">Live Chokepoints</span>
+                  <Badge variant="secondary" className="text-xs">
+                    Real-time
+                  </Badge>
+                </div>
+                <ChevronDown className="h-4 w-4" />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <Card>
+                <CardContent className="p-4 space-y-4">
+                  {/* Visibility Toggle */}
+                  <div className="flex items-center justify-between">
+                    <Label
+                      htmlFor="chokepoints-visible"
+                      className="flex items-center gap-2"
+                    >
+                      {liveChokepointsLayer.visible ? (
+                        <Eye className="h-4 w-4 text-green-600" />
+                      ) : (
+                        <EyeOff className="h-4 w-4 text-gray-400" />
+                      )}
+                      Show Chokepoints
+                    </Label>
+                    <Switch
+                      id="chokepoints-visible"
+                      checked={liveChokepointsLayer.visible}
+                      onCheckedChange={setLiveChokepointsVisible}
+                    />
+                  </div>
+
+                  {liveChokepointsLayer.visible && (
+                    <>
+                      <Separator />
+
+                      {/* Refresh Interval */}
+                      <div className="space-y-2">
+                        <Label className="text-sm flex items-center gap-2">
+                          <Clock className="h-4 w-4" />
+                          Refresh Interval
+                        </Label>
+                        <Select
+                          value={liveChokepointsLayer.refreshInterval.toString()}
+                          onValueChange={(value) =>
+                            setLiveChokepointsRefreshInterval(parseInt(value))
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="5">5 minutes</SelectItem>
+                            <SelectItem value="10">10 minutes</SelectItem>
+                            <SelectItem value="15">15 minutes</SelectItem>
+                            <SelectItem value="30">30 minutes</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Show Labels Toggle */}
+                      <div className="flex items-center justify-between">
+                        <Label
+                          htmlFor="chokepoints-labels"
+                          className="flex items-center gap-2"
+                        >
+                          <Info className="h-4 w-4" />
+                          Show Labels
+                        </Label>
+                        <Switch
+                          id="chokepoints-labels"
+                          checked={liveChokepointsLayer.showLabels}
+                          onCheckedChange={setLiveChokepointsShowLabels}
+                        />
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            </CollapsibleContent>
+          </Collapsible>
+
           {/* Settings */}
           <Collapsible>
             <CollapsibleTrigger asChild>
@@ -490,6 +584,9 @@ export function TrafficControlSidebar({
                   </div>
                   <div>
                     Incidents: {incidentLayer.visible ? "✓ Active" : "✗ Hidden"}
+                  </div>
+                  <div>
+                    Chokepoints: {liveChokepointsLayer.visible ? "✓ Active" : "✗ Hidden"}
                   </div>
                   <div>
                     Auto Refresh:{" "}

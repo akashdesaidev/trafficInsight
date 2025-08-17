@@ -159,7 +159,7 @@ async def get_traffic_incidents(
         except Exception:
             pass
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    async with httpx.AsyncClient(timeout=60.0) as client:
         try:
             resp = await client.get(
                 "https://api.tomtom.com/traffic/services/5/incidentDetails",
@@ -168,7 +168,7 @@ async def get_traffic_incidents(
                     "bbox": bbox,
                     "language": language,
                     "timeValidityFilter": timeValidityFilter,
-                    "fields": "{incidents{type,severity,geometry{type,coordinates},properties{id,description,startTime,endTime}}}",
+                    "fields": "{incidents{type,geometry{type,coordinates},properties{id,iconCategory,magnitudeOfDelay,events{description,code,iconCategory},startTime,endTime,from,to,length,delay,roadNumbers,timeValidity,probabilityOfOccurrence,numberOfReports,lastReportTime}}}",
                 },
             )
         except httpx.HTTPError as exc:
@@ -181,20 +181,64 @@ async def get_traffic_incidents(
             raise HTTPException(status_code=resp.status_code, detail=resp.text)
         data = resp.json()
 
-    incidents_raw = data.get("incidents") or data.get("incidents").get("incidents") if isinstance(data.get("incidents"), dict) else data.get("incidents")
+    incidents_raw = data.get("incidents", [])
     incidents_list = []
     for item in incidents_raw or []:
         props = item.get("properties", {})
-        geometry = item.get("geometry", {})
+        geometry_raw = item.get("geometry", {})
+        
+        # Process geometry to handle different coordinate structures
+        geometry = None
+        if geometry_raw:
+            coords = geometry_raw.get("coordinates", [])
+            geom_type = geometry_raw.get("type", "Point")
+            
+            # For LineString, keep the full coordinate array; for Point, use as-is
+            if geom_type == "Point" and coords and len(coords) >= 2:
+                # Point: [lon, lat]
+                try:
+                    geometry = {
+                        "type": geom_type,
+                        "coordinates": [float(coords[0]), float(coords[1])]
+                    }
+                except (ValueError, TypeError, IndexError):
+                    geometry = None
+            elif geom_type == "LineString" and coords:
+                # LineString: [[lon, lat], [lon, lat], ...] -> use first point for our model
+                try:
+                    first_coord = coords[0] if coords and isinstance(coords[0], list) else coords
+                    if first_coord and len(first_coord) >= 2:
+                        geometry = {
+                            "type": geom_type,
+                            "coordinates": [float(first_coord[0]), float(first_coord[1])]
+                        }
+                except (ValueError, TypeError, IndexError):
+                    geometry = None
+        
+        # Extract description from events array (first event's description)
+        description = None
+        events = props.get("events", [])
+        if events and len(events) > 0:
+            description = events[0].get("description")
+        
+        # Map iconCategory to severity for backward compatibility
+        icon_category = props.get("iconCategory")
+        severity_mapping = {
+            0: "unknown", 1: "major", 2: "minor", 3: "major", 4: "minor", 
+            5: "major", 6: "moderate", 7: "moderate", 8: "major", 9: "minor", 
+            10: "minor", 11: "major", 14: "moderate"
+        }
+        severity = severity_mapping.get(icon_category, "unknown") if icon_category is not None else None
+        
         incidents_list.append(
             Incident(
                 id=str(props.get("id", "")),
-                type=item.get("type"),
-                severity=item.get("severity"),
-                description=props.get("description"),
+                type=item.get("type", "Feature"),
+                severity=severity,
+                description=description,
                 startTime=props.get("startTime"),
                 endTime=props.get("endTime"),
-                geometry=geometry if geometry else None,
+                geometry=geometry,
             ).model_dump()
         )
 
@@ -316,7 +360,7 @@ async def flow_segment(
     upstream = f"https://api.tomtom.com/traffic/services/4/flowSegmentData/{style}/{resolution}/json"
     params = {"key": api_key, "point": f"{lat},{lon}", "unit": unit}
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.get(upstream, params=params)
             if resp.status_code != 200:
                 raise HTTPException(status_code=resp.status_code, detail=resp.text)
@@ -354,7 +398,7 @@ async def get_traffic_tile(
         params["thickness"] = str(thickness)
     
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.get(upstream, params=params)
             if resp.status_code == 200:
                 headers = {"Cache-Control": "public, max-age=60"}

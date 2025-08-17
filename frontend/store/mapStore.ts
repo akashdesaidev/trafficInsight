@@ -14,6 +14,12 @@ interface IncidentLayerSettings {
   timeFilter: "current" | "1h" | "6h" | "24h";
 }
 
+interface LiveChokepointsLayerSettings {
+  visible: boolean;
+  refreshInterval: number; // minutes
+  showLabels: boolean;
+}
+
 interface MapSettings {
   autoRefresh: boolean;
   refreshInterval: number; // seconds
@@ -30,6 +36,7 @@ interface MapState {
   // Layer settings
   trafficLayer: TrafficLayerSettings;
   incidentLayer: IncidentLayerSettings;
+  liveChokepointsLayer: LiveChokepointsLayerSettings;
   mapSettings: MapSettings;
 
   // UI state
@@ -54,6 +61,11 @@ interface MapState {
     filter: IncidentLayerSettings["severityFilter"]
   ) => void;
   setIncidentTimeFilter: (filter: IncidentLayerSettings["timeFilter"]) => void;
+
+  // Live chokepoints layer actions
+  setLiveChokepointsVisible: (visible: boolean) => void;
+  setLiveChokepointsRefreshInterval: (interval: number) => void;
+  setLiveChokepointsShowLabels: (show: boolean) => void;
 
   // Settings actions
   setAutoRefresh: (enabled: boolean) => void;
@@ -85,6 +97,13 @@ export const useMapStore = create<MapState>((set) => ({
     visible: false,
     severityFilter: ["low", "medium", "high", "critical"],
     timeFilter: "current",
+  },
+
+  // Default live chokepoints layer settings
+  liveChokepointsLayer: {
+    visible: false,
+    refreshInterval: 5, // 5 minutes
+    showLabels: true,
   },
 
   // Default map settings
@@ -137,6 +156,20 @@ export const useMapStore = create<MapState>((set) => ({
   setIncidentTimeFilter: (timeFilter) =>
     set((state) => ({
       incidentLayer: { ...state.incidentLayer, timeFilter },
+    })),
+
+  // Live chokepoints layer actions
+  setLiveChokepointsVisible: (visible) =>
+    set((state) => ({
+      liveChokepointsLayer: { ...state.liveChokepointsLayer, visible },
+    })),
+  setLiveChokepointsRefreshInterval: (refreshInterval) =>
+    set((state) => ({
+      liveChokepointsLayer: { ...state.liveChokepointsLayer, refreshInterval },
+    })),
+  setLiveChokepointsShowLabels: (showLabels) =>
+    set((state) => ({
+      liveChokepointsLayer: { ...state.liveChokepointsLayer, showLabels },
     })),
 
   // Settings actions
