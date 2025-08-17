@@ -17,7 +17,6 @@ const API_CACHE_CONFIG = {
   '/api/health': { ttl: 60000 }, // 1 minute
   '/api/traffic/live-traffic': { ttl: 120000 }, // 2 minutes
   '/api/traffic/traffic-incidents': { ttl: 120000 }, // 2 minutes
-  '/api/historical-traffic': { ttl: 300000 }, // 5 minutes
   '/api/top-chokepoints': { ttl: 3600000 }, // 1 hour
 };
 

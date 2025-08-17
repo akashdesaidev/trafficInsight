@@ -16,17 +16,7 @@ const ExportModal = lazy(() =>
   }))
 );
 
-const CongestionHeatmap = lazy(() => 
-  import('@/components/analytics/CongestionHeatmap').then(module => ({
-    default: module.CongestionHeatmap
-  }))
-);
-
-const TrafficPatternCharts = lazy(() => 
-  import('@/components/analytics/TrafficPatternCharts').then(module => ({
-    default: module.TrafficPatternCharts
-  }))
-);
+// Removed CongestionHeatmap and TrafficPatternCharts - historical data components deleted
 
 // Loading fallback components
 const LoadingCard = () => (
@@ -80,35 +70,7 @@ export const LazyExportModal: React.FC<LazyExportModalProps> = (props) => (
   </Suspense>
 );
 
-interface LazyCongestionHeatmapProps {
-  selectedArea?: {
-    bbox: [number, number, number, number];
-    name?: string;
-  };
-  startDate: Date;
-  endDate: Date;
-}
-
-export const LazyCongestionHeatmap: React.FC<LazyCongestionHeatmapProps> = (props) => (
-  <Suspense fallback={<LoadingCard />}>
-    <CongestionHeatmap {...props} />
-  </Suspense>
-);
-
-interface LazyTrafficPatternChartsProps {
-  selectedArea?: {
-    bbox: [number, number, number, number];
-    name?: string;
-  };
-  startDate: Date;
-  endDate: Date;
-}
-
-export const LazyTrafficPatternCharts: React.FC<LazyTrafficPatternChartsProps> = (props) => (
-  <Suspense fallback={<LoadingCard />}>
-    <TrafficPatternCharts {...props} />
-  </Suspense>
-);
+// Removed LazyCongestionHeatmap and LazyTrafficPatternCharts - historical data components deleted
 
 // Virtual scrolling hook for large lists
 export function useVirtualScrolling<T>(

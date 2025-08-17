@@ -1,8 +1,6 @@
 export { 
   LazyAnalyticsPanel,
   LazyExportModal,
-  LazyCongestionHeatmap,
-  LazyTrafficPatternCharts,
   useVirtualScrolling,
   OptimizedImage
 } from './LazyLoadingWrapper';

@@ -11,6 +11,7 @@ export default function LiveChokepointsPage() {
     bbox: [number, number, number, number];
     name?: string;
   } | undefined>(undefined);
+  const [centerMapFunction, setCenterMapFunction] = useState<((coordinates: [number, number], zoom?: number) => void) | null>(null);
   const bounds = useMapStore((s) => s.bounds);
 
   // Use current map bounds as default selection for city-level view
@@ -23,6 +24,16 @@ export default function LiveChokepointsPage() {
     setSelectedArea({ bbox, name });
   };
 
+  const handleMapReady = (centerMap: (coordinates: [number, number], zoom?: number) => void) => {
+    setCenterMapFunction(() => centerMap);
+  };
+
+  const handleChokepointClick = (chokepoint: { center: { lat: number; lon: number } }) => {
+    if (centerMapFunction) {
+      centerMapFunction([chokepoint.center.lon, chokepoint.center.lat], 16);
+    }
+  };
+
   return (
     <div className="flex w-full h-[calc(100vh-64px)]">
       {/* Traffic Control Sidebar */}
@@ -32,12 +43,12 @@ export default function LiveChokepointsPage() {
       
       {/* Main Map Area */}
       <main className="flex-1 p-2 relative">
-        <MapContainer onAreaSelect={handleAreaSelect} />
+        <MapContainer onAreaSelect={handleAreaSelect} onMapReady={handleMapReady} />
       </main>
       
       {/* Live Leaderboard */}
       <div className="w-full md:w-[480px] p-2 border-l">
-        <LiveLeaderboard selectedArea={effectiveArea} />
+        <LiveLeaderboard selectedArea={effectiveArea} onChokepointClick={handleChokepointClick} />
       </div>
     </div>
   );

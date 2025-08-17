@@ -545,43 +545,64 @@ class LiveChokepointService:
         return 1.0
 
     async def _fetch_incidents_single(self, bbox: List[float]) -> List[Dict[str, Any]]:
-        """Original single-bbox incident fetching logic"""
+        """Fetch incidents for a single bbox."""
         min_lon, min_lat, max_lon, max_lat = bbox
         bbox_str = f"{min_lon},{min_lat},{max_lon},{max_lat}"
         
-        settings = self.settings
-        api_key = settings.clean_tomtom_traffic_api_key or settings.clean_tomtom_maps_api_key
+        # Get API key
+        api_key = self.settings.clean_tomtom_traffic_api_key or self.settings.clean_tomtom_maps_api_key
         if not api_key:
+            self.logger.warning(f"No TomTom API key available for incidents")
             return []
         
-        params = {
-            "key": api_key,
-            "bbox": bbox_str,
-            "language": "en-GB",
-            "timeValidityFilter": "present",
-            "fields": "{incidents{type,severity,geometry{type,coordinates},properties{id,description,roadClosed,magnitudeOfDelay}}}",
-        }
-        
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                resp = await client.get("https://api.tomtom.com/traffic/services/5/incidentDetails", params=params)
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    "https://api.tomtom.com/traffic/services/5/incidentDetails",
+                    params={
+                        "key": api_key,
+                        "bbox": bbox_str,
+                        "fields": "{incidents{type,geometry{type,coordinates},properties{id,iconCategory,magnitudeOfDelay,events{description,code,iconCategory},startTime,endTime,from,to,length,delay,roadNumbers,timeValidity,probabilityOfOccurrence,numberOfReports,lastReportTime}}}",
+                        "language": "en-US",
+                        "categoryFilter": "0,1,2,3,4,5,6,7,8,9,10,11,14",
+                        "timeValidityFilter": "present"
+                    },
+                    timeout=10.0,
+                )
                 if resp.status_code != 200:
                     self.logger.warning(f"Incident API failed for bbox {bbox_str}: {resp.status_code}")
                     return []
                 data = resp.json()
+                
+                incidents = data.get("incidents", [])
+                self.logger.info(f"Fetched {len(incidents)} incidents for bbox {bbox_str}")
+                
+                # Log sample incident structure for debugging
+                if incidents:
+                    sample_incident = incidents[0]
+                    self.logger.debug(f"Sample incident structure: {sample_incident}")
+                    
+                return incidents
         except Exception as e:
             self.logger.warning(f"Incident fetch exception for bbox {bbox_str}: {e}")
             return []
-        
-        incidents = data.get("incidents")
-        if isinstance(incidents, dict):
-            incidents = incidents.get("incidents")
-        return incidents or []
 
     async def _fetch_incidents(self, bbox: List[float]) -> List[Dict[str, Any]]:
         """Enhanced to handle large bboxes by splitting"""
+        self.logger.info(f"Fetching incidents for bbox: {bbox}")
+        
+        # Check if we have a valid API key
+        # Check if we have a valid API key
+        if not self.settings.tomtom_traffic_api_key and not self.settings.tomtom_maps_api_key:
+            self.logger.error("No TomTom API key configured")
+            return []
+            
+        api_key = self.settings.clean_tomtom_traffic_api_key or self.settings.clean_tomtom_maps_api_key
+        self.logger.debug(f"Using TomTom API key: {api_key[:10]}...")
+        
         # Check bbox area and split if needed
         area_km2 = self._calculate_bbox_area_km2(bbox)
+        self.logger.debug(f"Bbox area: {area_km2:.2f} km²")
         
         # Split bbox if too large
         sub_bboxes = self._split_large_bbox(bbox, max_area_km2=8000)
@@ -657,62 +678,100 @@ class LiveChokepointService:
         incidents: List[Dict[str, Any]],
         incident_count_radius_m: int,
     ) -> Dict[str, Any]:
-        results: List[Dict[str, Any]] = []
-        for idx, cl in enumerate(clusters):
-            if not cl:
+        """Aggregate clusters into chokepoints with scoring."""
+        chokepoints = []
+        
+        self.logger.info(f"Processing {len(clusters)} clusters with {len(incidents)} incidents")
+        
+        # Debug: Log incident coordinates
+        self.logger.debug(f"Incident coordinates:")
+        print(f"DEBUG: Processing {len(incidents)} incidents")
+        for i, (lon_i, lat_i, is_closed) in enumerate(iter_incident_points_with_flags(incidents)):
+            self.logger.debug(f"  Incident {i}: ({lat_i:.6f}, {lon_i:.6f}), closed: {is_closed}")
+            print(f"DEBUG: Incident {i}: ({lat_i:.6f}, {lon_i:.6f}), closed: {is_closed}")
+            if i >= 3:  # Limit to first 3 for brevity
+                break
+        
+        for i, cluster in enumerate(clusters):
+            if not cluster:
                 continue
-            total_w = sum(p.weight for p in cl)
-            if total_w <= 0:
-                continue
-            lat = sum(p.lat * p.weight for p in cl) / total_w
-            lon = sum(p.lon * p.weight for p in cl) / total_w
-            sev_values = sorted([p.severity for p in cl])
-            # weighted mean severity
-            sev_mean = sum(p.severity * p.weight for p in cl) / total_w
-            # simple p90 (unweighted for simplicity)
-            p90 = sev_values[int(0.9 * (len(sev_values) - 1))] if len(sev_values) > 1 else sev_values[0]
-
-            # incident/closure around cluster center
+                
+            # Use representative point (highest severity) instead of centroid
+            highest_severity_point = max(cluster, key=lambda p: p.severity)
+            center_lat = highest_severity_point.lat
+            center_lon = highest_severity_point.lon
+            
+            # Log the difference for debugging
+            centroid_lat = sum(p.lat for p in cluster) / len(cluster)
+            centroid_lon = sum(p.lon for p in cluster) / len(cluster)
+            self.logger.debug(f"Cluster {i}: Centroid=({centroid_lat:.6f}, {centroid_lon:.6f}), Representative=({center_lat:.6f}, {center_lon:.6f}), Severity={highest_severity_point.severity:.3f}")
+            
+            # Count incidents near this cluster center
             incident_count = 0
             closure = False
-            if incidents:
-                for lon_i, lat_i, is_closed in iter_incident_points_with_flags(incidents):
-                    if haversine_m(lat, lon, lat_i, lon_i) <= incident_count_radius_m:
-                        incident_count += 1
-                        if is_closed:
-                            closure = True
-
-            bonus = 0.0
-            if closure:
-                bonus = max(bonus, 0.1)
-            if incident_count > 0:
-                bonus = max(bonus, 0.1)
-
-            score = 100.0 * (0.6 * sev_mean + 0.3 * p90 + 0.1 * bonus)
-
-            # Optional reverse geocode
-            road_name: Optional[str] = None
-            if include_geocode:
-                try:
-                    road_name = await self._reverse_geocode(lat, lon)
-                except Exception:
-                    road_name = None
-
-            results.append({
-                "id": f"cp_{idx}",
-                "center": {"lat": lat, "lon": lon},
-                "score": round(score, 1),
-                "severity_mean": round(sev_mean, 3),
-                "severity_peak": round(p90, 3),
+            
+            self.logger.debug(f"Checking incidents for cluster {i} at ({center_lat:.6f}, {center_lon:.6f})")
+            
+            for lon_i, lat_i, is_closed in iter_incident_points_with_flags(incidents):
+                dist_m = haversine_m(center_lat, center_lon, lat_i, lon_i)
+                self.logger.debug(f"Incident at ({lat_i:.6f}, {lon_i:.6f}), distance: {dist_m:.1f}m, radius: {incident_count_radius_m}m")
+                if dist_m <= incident_count_radius_m:
+                    incident_count += 1
+                    self.logger.debug(f"Incident within radius! Count now: {incident_count}")
+                    if is_closed:
+                        closure = True
+            
+            self.logger.debug(f"Cluster {i}: center=({center_lat:.6f}, {center_lon:.6f}), incidents_nearby={incident_count}, closure={closure}")
+            
+            # Calculate metrics
+            severities = [p.severity for p in cluster]
+            severity_mean = sum(severities) / len(severities)
+            severity_peak = max(severities)
+            support = sum(p.weight for p in cluster)
+            
+            # Enhanced scoring with incident boost
+            base_score = (
+                severity_mean * 40 +
+                severity_peak * 30 +
+                min(support / 10, 1.0) * 20 +
+                min(len(cluster) / 10, 1.0) * 10
+            )
+            
+            # Incident boost
+            incident_boost = min(incident_count * 5, 20)
+            closure_boost = 15 if closure else 0
+            
+            final_score = base_score + incident_boost + closure_boost
+            
+            chokepoint = {
+                "id": f"cp_{i}",
+                "center": {"lat": center_lat, "lon": center_lon},
+                "score": round(final_score, 1),
+                "severity_mean": round(severity_mean, 3),
+                "severity_peak": round(severity_peak, 3),
                 "incident_count": incident_count,
                 "closure": closure,
-                "support": round(total_w, 2),
-                "count": len(cl),
-                "road_name": road_name,
-            })
-
-        results.sort(key=lambda r: r["score"], reverse=True)
-        return {"clusters": results}
+                "support": round(support, 2),
+                "count": len(cluster),
+            }
+            
+            # Add geocoding if requested
+            if include_geocode:
+                road_name = await self._reverse_geocode(center_lat, center_lon)
+                chokepoint["road_name"] = road_name
+            else:
+                chokepoint["road_name"] = None
+                
+            chokepoints.append(chokepoint)
+        
+        # Sort by score descending
+        chokepoints.sort(key=lambda x: x["score"], reverse=True)
+        
+        return {
+            "clusters": chokepoints,
+            "total_incidents": len(incidents),
+            "processing_time_ms": 0,  # Will be set by caller
+        }
 
     async def _reverse_geocode(self, lat: float, lon: float) -> Optional[str]:
         # cache by 5-decimal precision
@@ -786,23 +845,62 @@ def iter_incident_points(incidents: List[Dict[str, Any]]):
 
 def iter_incident_points_with_flags(incidents: List[Dict[str, Any]]):
     for inc in incidents:
-        geom = inc.get("geometry", {}) if isinstance(inc, dict) else None
-        props = inc.get("properties", {}) if isinstance(inc, dict) else {}
-        is_closed = bool(props.get("roadClosed"))
+        # Handle both direct incident format and nested properties format
+        if "geometry" in inc and "properties" in inc:
+            # TomTom API format from live chokepoints service
+            geom = inc.get("geometry", {})
+            props = inc.get("properties", {})
+        else:
+            # Direct format from traffic incidents endpoint
+            geom = inc.get("geometry", {})
+            props = inc  # Properties are at the top level
+        
+        # Check for closure indicators
+        is_closed = False
+        
+        # Check description for closure indicators
+        description = props.get("description", "").lower()
+        if "closed" in description or "closure" in description:
+            is_closed = True
+            
+        # Check severity
+        severity = props.get("severity", "")
+        if severity in ["major", "critical"]:
+            is_closed = True
+            
+        # Check events if they exist
+        events = props.get("events", [])
+        if events:
+            for event in events:
+                event_code = event.get("code", "")
+                event_desc = event.get("description", "").lower()
+                if "closed" in event_desc or "closure" in event_desc or event_code in ["1", "2", "3"]:
+                    is_closed = True
+                    break
+        
+        # Also check iconCategory for closure types
+        icon_category = props.get("iconCategory")
+        if icon_category in [1, 2, 3, 8]:
+            is_closed = True
+            
         if not isinstance(geom, dict):
             continue
+            
         coords = geom.get("coordinates")
         if not coords:
             continue
-        if isinstance(coords[0], (int, float)) and len(coords) >= 2:
-            lon_i, lat_i = float(coords[0]), float(coords[1])
-            yield lon_i, lat_i, is_closed
-        elif isinstance(coords[0], (list, tuple)):
-            try:
+            
+        # Handle different coordinate formats
+        if isinstance(coords, list) and len(coords) >= 2:
+            if isinstance(coords[0], (int, float)):
+                # Simple [lon, lat] format
+                lon_i, lat_i = float(coords[0]), float(coords[1])
+                yield lon_i, lat_i, is_closed
+            elif isinstance(coords[0], list) and len(coords[0]) >= 2:
+                # Nested [[lon, lat], ...] format
                 lon_i, lat_i = float(coords[0][0]), float(coords[0][1])
                 yield lon_i, lat_i, is_closed
-            except Exception:
-                continue
+
 
 class _AsyncCacheWrapper:
     def __init__(self, cache) -> None:

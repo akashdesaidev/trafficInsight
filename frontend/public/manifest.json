@@ -70,23 +70,9 @@
   "prefer_related_applications": false,
   "shortcuts": [
     {
-      "name": "View Analytics",
-      "short_name": "Analytics",
-      "description": "Open traffic analytics dashboard",
-      "url": "/?tab=analytics",
-      "icons": [{ "src": "icon-96x96.png", "sizes": "96x96" }]
-    },
-    {
-      "name": "Export Data",
-      "short_name": "Export",
-      "description": "Export traffic data",
-      "url": "/?tab=export",
-      "icons": [{ "src": "icon-96x96.png", "sizes": "96x96" }]
-    },
-    {
       "name": "Chokepoints",
       "short_name": "Hotspots",
-      "description": "View traffic chokepoints",
+      "description": "View live traffic chokepoints",
       "url": "/?tab=chokepoints",
       "icons": [{ "src": "icon-96x96.png", "sizes": "96x96" }]
     }

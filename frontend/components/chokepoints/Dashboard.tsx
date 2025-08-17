@@ -87,50 +87,7 @@ export function ChokepointDashboard({ selectedArea, onChokepointSelect }: Chokep
 
   const fetchSummary = async () => {};
 
-  const generateMockChokepoints = () => {
-    if (!selectedArea) return;
 
-    const [minLon, minLat, maxLon, maxLat] = selectedArea.bbox;
-    const roadNames = [
-      "Outer Ring Road", "Hosur Road", "Airport Road", "Bannerghatta Road",
-      "Whitefield Road", "Electronic City", "Koramangala Main Road",
-      "Indiranagar 100 Feet Road", "MG Road", "Brigade Road"
-    ];
-
-    const mockData: Chokepoint[] = Array.from({ length: 15 }, (_, i) => {
-      const lat = minLat + Math.random() * (maxLat - minLat);
-      const lon = minLon + Math.random() * (maxLon - minLon);
-      const roadName = roadNames[i % roadNames.length];
-      const score = 30 + Math.random() * 60; // 30-90 range
-      
-      return {
-        id: i + 1,
-        location: { lat, lon },
-        road_name: roadName,
-        segment_id: `seg_${i + 1}_${lat.toFixed(4)}_${lon.toFixed(4)}`,
-        congestion_score: parseFloat(score.toFixed(1)),
-        rank: i + 1,
-        avg_delay_minutes: 3 + Math.random() * 12,
-        max_delay_minutes: 15 + Math.random() * 20,
-        frequency_score: 0.2 + Math.random() * 0.6,
-        intensity_score: 0.3 + Math.random() * 0.5,
-        duration_score: 0.1 + Math.random() * 0.4,
-        peak_periods: [
-          { start: "08:00", end: "10:00", severity: 0.7 + Math.random() * 0.3 },
-          { start: "18:00", end: "20:00", severity: 0.6 + Math.random() * 0.4 }
-        ],
-        worst_hour: 8 + Math.floor(Math.random() * 2),
-        worst_day: Math.floor(Math.random() * 5), // Weekdays mostly
-        last_updated: "2024-12-26T14:30:00Z",
-        total_observations: 500 + Math.floor(Math.random() * 1000),
-        data_quality_score: 0.7 + Math.random() * 0.3
-      };
-    });
-
-    // Sort by congestion score
-    mockData.sort((a, b) => b.congestion_score - a.congestion_score);
-    setChokepoints(mockData);
-  };
 
   const startAnalysis = async () => {};
 
@@ -184,7 +141,7 @@ export function ChokepointDashboard({ selectedArea, onChokepointSelect }: Chokep
             <div className="flex items-center gap-2 text-orange-700">
               <AlertTriangle className="h-4 w-4" />
               <p className="text-sm">
-                {error} Showing sample data for demonstration.
+                {error} No chokepoint data available.
               </p>
             </div>
           </CardContent>

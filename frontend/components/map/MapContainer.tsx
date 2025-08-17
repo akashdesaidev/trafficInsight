@@ -11,6 +11,7 @@ import IncidentPopup from "@/components/map/IncidentPopup";
 import RouteDrawer from "@/components/map/RouteDrawer";
 import LiveChokepointsMarkers from "@/components/map/LiveChokepointsMarkers";
 import LocationSearch from "@/components/search/LocationSearch";
+import { ChokepointDetailModal } from "@/components/chokepoints/DetailModal";
 import "@tomtom-international/web-sdk-maps/dist/maps.css";
 
 type TomTomModule = {
@@ -32,9 +33,10 @@ interface MapContainerProps {
     bbox: [number, number, number, number],
     name?: string
   ) => void;
+  onMapReady?: (centerMap: (coordinates: [number, number], zoom?: number) => void) => void;
 }
 
-export default function MapContainer({ onAreaSelect }: MapContainerProps) {
+export default function MapContainer({ onAreaSelect, onMapReady }: MapContainerProps) {
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<TomTomMap | null>(null);
   const [map, setMap] = useState<TomTomMap | null>(null);
@@ -52,6 +54,8 @@ export default function MapContainer({ onAreaSelect }: MapContainerProps) {
   const [userLocation, setUserLocation] = useState<[number, number] | null>(
     null
   );
+  const [selectedChokepoint, setSelectedChokepoint] = useState<any | null>(null);
+  const [showChokepointModal, setShowChokepointModal] = useState(false);
 
   const setCenter = useMapStore((s) => s.setCenter);
   const setZoom = useMapStore((s) => s.setZoom);
@@ -254,6 +258,24 @@ export default function MapContainer({ onAreaSelect }: MapContainerProps) {
           mapRef.current = map;
           setMap(map); // Also set the state so components re-render
 
+          // Create centerMap function and call onMapReady
+          const centerMap = (coordinates: [number, number], zoom?: number) => {
+            if (map && map.setCenter) {
+              map.setCenter(coordinates);
+              if (zoom !== undefined && map.setZoom) {
+                map.setZoom(zoom);
+              }
+              // Update global state
+              setCenter(coordinates);
+              if (zoom !== undefined) {
+                setZoom(zoom);
+              }
+            }
+          };
+
+          // Notify parent that map is ready
+          onMapReady?.(centerMap);
+
           console.log("Map setup complete");
 
           const onResize = () => map.resize();
@@ -344,6 +366,10 @@ export default function MapContainer({ onAreaSelect }: MapContainerProps) {
       <LiveChokepointsMarkers
         visible={liveChokepointsLayer.visible}
         map={map}
+        onChokepointClick={(chokepoint) => {
+          setSelectedChokepoint(chokepoint);
+          setShowChokepointModal(true);
+        }}
       />
       <IncidentPopup map={map} />
       <RouteDrawer
@@ -381,6 +407,39 @@ export default function MapContainer({ onAreaSelect }: MapContainerProps) {
 
       {/* Debug Component - Remove this after testing */}
       {/* <TrafficTestComponent visible={showTraffic} /> */}
+      
+      {/* Chokepoint Detail Modal */}
+      {selectedChokepoint && (
+        <ChokepointDetailModal
+          chokepoint={{
+            id: parseInt(selectedChokepoint.id) || 0,
+            location: {
+              lat: selectedChokepoint.center.lat,
+              lon: selectedChokepoint.center.lon
+            },
+            road_name: selectedChokepoint.road_name || 'Unknown Road',
+            segment_id: selectedChokepoint.id,
+            congestion_score: selectedChokepoint.score || 0,
+            rank: 1,
+            avg_delay_minutes: selectedChokepoint.enhancedVehicles ? Math.round(selectedChokepoint.enhancedVehicles / 10) : Math.round(selectedChokepoint.count * 2),
+            max_delay_minutes: selectedChokepoint.enhancedVehicles ? Math.round(selectedChokepoint.enhancedVehicles / 5) : Math.round(selectedChokepoint.count * 4),
+            frequency_score: selectedChokepoint.severity_mean || 0.5,
+            intensity_score: selectedChokepoint.severity_peak || 0.7,
+            duration_score: selectedChokepoint.support ? selectedChokepoint.support / 100 : 0.6,
+            peak_periods: [],
+            worst_hour: 8,
+            worst_day: 1,
+            last_updated: new Date().toISOString(),
+            total_observations: selectedChokepoint.count || 0,
+            data_quality_score: selectedChokepoint.confidence === 'high' ? 0.9 : selectedChokepoint.confidence === 'medium' ? 0.7 : 0.5
+          }}
+          isOpen={showChokepointModal}
+          onClose={() => {
+            setShowChokepointModal(false);
+            setSelectedChokepoint(null);
+          }}
+        />
+      )}
     </div>
   );
 }
