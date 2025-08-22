@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
 
 import {
   Select,
@@ -27,7 +28,6 @@ import {
   Download,
   Settings,
   Layers,
-
   RefreshCw,
   ChevronDown,
   ChevronRight,
@@ -586,7 +586,8 @@ export function TrafficControlSidebar({
                     Incidents: {incidentLayer.visible ? "✓ Active" : "✗ Hidden"}
                   </div>
                   <div>
-                    Chokepoints: {liveChokepointsLayer.visible ? "✓ Active" : "✗ Hidden"}
+                    Chokepoints:{" "}
+                    {liveChokepointsLayer.visible ? "✓ Active" : "✗ Hidden"}
                   </div>
                   <div>
                     Auto Refresh:{" "}

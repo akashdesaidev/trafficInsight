@@ -5,6 +5,7 @@ import MapContainer from "@/components/map/MapContainer";
 import { AnalyticsPanel } from "@/components/analytics/AnalyticsPanel";
 import { ExportPanel } from "@/components/export/ExportPanel";
 import { TrafficControlSidebar } from "@/components/sidebar/TrafficControlSidebar";
+import LiveLeaderboard from "@/components/chokepoints/LiveLeaderboard";
 import { useMapStore } from "@/store/mapStore";
 import { Button } from "@/components/ui/button";
 import { BarChart3 } from "lucide-react";
@@ -19,7 +20,18 @@ export default function Home() {
       }
     | undefined
   >(undefined);
+  const [centerMapFunction, setCenterMapFunction] = useState<
+    ((coordinates: [number, number], zoom?: number) => void) | null
+  >(null);
+
   const sidebarCollapsed = useMapStore((state) => state.sidebarCollapsed);
+  const liveChokepointsVisible = useMapStore(
+    (state) => state.liveChokepointsLayer.visible
+  );
+  const bounds = useMapStore((state) => state.bounds);
+
+  // Use current map bounds as default selection for chokepoints view
+  const effectiveArea = selectedArea || (bounds ? { bbox: bounds } : undefined);
 
   const handleAreaSelect = (
     bbox: [number, number, number, number],
@@ -29,6 +41,20 @@ export default function Home() {
     setIsAnalyticsPanelOpen(true);
   };
 
+  const handleMapReady = (
+    centerMap: (coordinates: [number, number], zoom?: number) => void
+  ) => {
+    setCenterMapFunction(() => centerMap);
+  };
+
+  const handleChokepointClick = (chokepoint: {
+    center: { lat: number; lon: number };
+  }) => {
+    if (centerMapFunction) {
+      centerMapFunction([chokepoint.center.lon, chokepoint.center.lat], 16);
+    }
+  };
+
   return (
     <div className="flex w-full h-[calc(100vh-64px)]">
       {/* Sidebar */}
@@ -36,7 +62,7 @@ export default function Home() {
         className={`hidden md:block max-h-screen overflow-x-hidden overflow-y-auto transition-all duration-200`}
       >
         <TrafficControlSidebar
-          selectedArea={selectedArea}
+          selectedArea={liveChokepointsVisible ? effectiveArea : selectedArea}
           onAnalyticsOpen={() => setIsAnalyticsPanelOpen(true)}
           onExportOpen={() => setIsExportPanelOpen(true)}
         />
@@ -48,7 +74,10 @@ export default function Home() {
           sidebarCollapsed ? "w-full" : ""
         }`}
       >
-        <MapContainer onAreaSelect={handleAreaSelect} />
+        <MapContainer
+          onAreaSelect={handleAreaSelect}
+          onMapReady={handleMapReady}
+        />
 
         {/* Mobile Analytics Button */}
         <div className="md:hidden absolute top-4 right-4 z-40">
@@ -62,6 +91,16 @@ export default function Home() {
           </Button>
         </div>
       </main>
+
+      {/* Live Chokepoints Leaderboard - Conditionally rendered when chokepoints are active */}
+      {liveChokepointsVisible && (
+        <div className="w-full md:max-w-[480px] p-2 border-l">
+          <LiveLeaderboard
+            selectedArea={effectiveArea}
+            onChokepointClick={handleChokepointClick}
+          />
+        </div>
+      )}
 
       {/* Analytics Panel */}
       <AnalyticsPanel
